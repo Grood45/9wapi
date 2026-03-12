@@ -1,7 +1,7 @@
 module.exports = {
     apps: [
         {
-            name: "9w-gatekeeper-api",
+            name: "9wapi",
             script: "./server.js",
             instances: "max", // Use all CPU cores
             exec_mode: "cluster",
