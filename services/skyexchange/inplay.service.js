@@ -3,7 +3,7 @@ const Event = require("../../models/Event");
 const { getCookie } = require("../../controllers/auth/cookie.controller");
 
 
-const INPLAY_API = "https://bxawscf.skyinplay.com/exchange/member/playerService/queryEvents";
+const INPLAY_API = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryEvents";
 
 async function fetchAndSaveEvents() {
     try {
@@ -16,6 +16,8 @@ async function fetchAndSaveEvents() {
         // Extract JSESSIONID value for queryPass
         // Cookie format: "JSESSIONID=xyz.node" -> we need "xyz.node"
         const queryPass = cookie.split("JSESSIONID=")[1].split(";")[0];
+        const urlObj = new URL(INPLAY_API);
+        const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
 
         const body = new URLSearchParams({
             type: "inplay",
@@ -29,14 +31,14 @@ async function fetchAndSaveEvents() {
 
         const res = await axios.post(INPLAY_API, body, {
             headers: {
-                "Host": "bxawscf.skyinplay.com",
-                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept": "application/json, text/plain, */*",
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Origin": "https://bxawscf.skyinplay.com",
-                "Referer": "https://bxawscf.skyinplay.com/exchange/member/inplay",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Origin": origin,
+                "Referer": `${origin}/`,
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
                 "X-Requested-With": "XMLHttpRequest",
-                "Cookie": cookie
+                "Cookie": cookie,
+                "Host": urlObj.host
             },
             timeout: 20000
         });

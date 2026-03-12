@@ -2,7 +2,8 @@ const axios = require("axios");
 const { getCookie } = require("../../controllers/auth/cookie.controller");
 
 // Original Provider API
-const LIVE_EVENTS_COUNT_API = "https://bxawscf.skyinplay.com/exchange/member/playerService/queryOnLiveEvents";
+// Use a stable mirror that doesn't block AWS
+const LIVE_EVENTS_COUNT_API = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryOnLiveEvents";
 
 // Server In-Memory Cache (Blazing Fast, No DB Load)
 // This will hold data like: [ { eventType: 1, count: 20 }, ... ]
@@ -22,6 +23,8 @@ async function fetchAndCacheLiveEventsCount() {
 
         // We use queryPass just like other inplay APIs for consistency if needed.
         const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
+        const urlObj = new URL(LIVE_EVENTS_COUNT_API);
+        const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
 
         const body = new URLSearchParams({
             queryPass: queryPass
@@ -29,14 +32,14 @@ async function fetchAndCacheLiveEventsCount() {
 
         const res = await axios.post(LIVE_EVENTS_COUNT_API, body, {
             headers: {
-                "Host": "bxawscf.skyinplay.com",
-                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept": "application/json, text/plain, */*",
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Origin": "https://bxawscf.skyinplay.com",
-                "Referer": "https://bxawscf.skyinplay.com/exchange/member/inplay",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Origin": origin,
+                "Referer": `${origin}/`,
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
                 "X-Requested-With": "XMLHttpRequest",
-                "Cookie": cookie
+                "Cookie": cookie,
+                "Host": urlObj.host
             },
             timeout: 10000 // 10 seconds max wait
         });

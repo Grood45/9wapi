@@ -4,7 +4,8 @@ const TodayEvent = require("../../models/TodayEvent");
 const { getCookie } = require("../../controllers/auth/cookie.controller");
 
 // Original Provider API
-const TODAY_EVENTS_API = "https://bxawscf.skyinplay.com/exchange/member/playerService/queryEvents";
+// Use a stable mirror that doesn't block AWS
+const TODAY_EVENTS_API = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryEvents";
 
 // Server In-Memory Cache (0-ms Latency)
 let todayEventsCache = [];
@@ -30,6 +31,8 @@ async function fetchAndCacheTodayEvents() {
         }
 
         const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
+        const urlObj = new URL(TODAY_EVENTS_API);
+        const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
 
         const body = new URLSearchParams({
             type: "today",
@@ -42,17 +45,14 @@ async function fetchAndCacheTodayEvents() {
 
         const res = await axios.post(TODAY_EVENTS_API, body, {
             headers: {
-                "Host": "bxawscf.skyinplay.com",
-                "Accept": "application/json, text/javascript, */*; q=0.01",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Connection": "keep-alive",
+                "Accept": "application/json, text/plain, */*",
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Origin": "https://bxawscf.skyinplay.com",
-                "Referer": "https://bxawscf.skyinplay.com/",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0",
+                "Origin": origin,
+                "Referer": `${origin}/`,
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
                 "X-Requested-With": "XMLHttpRequest",
-                "Cookie": cookie
+                "Cookie": cookie,
+                "Host": urlObj.host
             },
             timeout: 15000
         });

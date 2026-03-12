@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const TomorrowEvent = require("../../models/TomorrowEvent");
 const { getCookie } = require("../../controllers/auth/cookie.controller");
 
-const API_URL = "https://bxawscf.skyinplay.com/exchange/member/playerService/queryEvents";
+const API_URL = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryEvents";
 
 let tomorrowEventsCache = [];
 let lastDataHash = "";
@@ -18,6 +18,8 @@ async function fetchAndCacheTomorrowEvents() {
         if (!cookie) return;
 
         const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
+        const urlObj = new URL(API_URL);
+        const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
 
         const body = new URLSearchParams({
             type: "tomorrow",
@@ -30,17 +32,14 @@ async function fetchAndCacheTomorrowEvents() {
 
         const res = await axios.post(API_URL, body, {
             headers: {
-                "Host": "bxawscf.skyinplay.com",
-                "Accept": "application/json, text/javascript, */*; q=0.01",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Connection": "keep-alive",
+                "Accept": "application/json, text/plain, */*",
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Origin": "https://bxawscf.skyinplay.com",
-                "Referer": "https://bxawscf.skyinplay.com/",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0",
+                "Origin": origin,
+                "Referer": `${origin}/`,
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
                 "X-Requested-With": "XMLHttpRequest",
-                "Cookie": cookie
+                "Cookie": cookie,
+                "Host": urlObj.host
             },
             timeout: 15000
         });
