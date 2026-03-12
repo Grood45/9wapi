@@ -32,7 +32,8 @@ async function generateCookie(providedToken) {
     });
 
     if (apiRes.status !== 200 || !apiRes.data?.data?.url) {
-      console.log("⚠️ GAME API FAILED:", apiRes.status);
+      console.log("⚠️ GAME API FAILED Content:", JSON.stringify(apiRes.data));
+      console.log("⚠️ GAME API FAILED Status:", apiRes.status);
       throw new Error(`GAME_API_FAILED_${apiRes.status}`);
     }
 
