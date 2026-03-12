@@ -1,74 +1,81 @@
 const axios = require("axios");
 const crypto = require("crypto");
 const TomorrowEvent = require("../../models/TomorrowEvent");
-const { getCookie } = require("../../controllers/auth/cookie.controller");
 
-const API_URL = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryEvents";
+// 9tens Tomorrow Endpoints (No Cookies Required)
+const SPORT_IDS = [4, 1, 2]; // Cricket, Soccer, Tennis
+const BASE_URL = "https://apiv2.9tens.live:5010/v1/spb/get-match-list?type=tomorrow";
 
+// Server In-Memory Cache (Blazing Fast, No DB Load)
 let tomorrowEventsCache = [];
+// Hash map to check if data actually changed before touching DB
 let lastDataHash = "";
 
+/**
+ * Creates an MD5 hash of string to quickly check for changes
+ */
 function generateHash(dataString) {
     return crypto.createHash("md5").update(dataString).digest("hex");
 }
 
+/**
+ * Fetches Tomorrow Events for all sports in parallel, stores in memory instantly, 
+ * and asynchronously syncs to MongoDB using Delta Logic.
+ */
 async function fetchAndCacheTomorrowEvents() {
     try {
-        const cookie = getCookie();
-        if (!cookie) return;
+        // 1. Parallel Fetching for all Sport IDs
+        const fetchPromises = SPORT_IDS.map(id =>
+            axios.get(`${BASE_URL}&game_type=${id}`, {
+                timeout: 10000,
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
+                }
+            })
+        );
 
-        const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
-        const urlObj = new URL(API_URL);
-        const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
+        const results = await Promise.allSettled(fetchPromises);
 
-        const body = new URLSearchParams({
-            type: "tomorrow",
-            eventTs: "-1",
-            marketTs: "-1",
-            eventType: "-1",
-            selectionTs: "-1",
-            queryPass: queryPass
-        }).toString();
-
-        const res = await axios.post(API_URL, body, {
-            headers: {
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Authorization": queryPass,
-                "Connection": "keep-alive",
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Cookie": cookie,
-                "Origin": "https://www.gu21go76.xyz",
-                "Referer": "https://www.gu21go76.xyz/",
-                "source": "1",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-site",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
-            },
-            timeout: 15000
+        // 2. Aggregate Results
+        let aggregatedMatches = [];
+        results.forEach((result, index) => {
+            if (result.status === "fulfilled" && result.value.data?.status === true) {
+                const matches = result.value.data.data?.matches || [];
+                aggregatedMatches = aggregatedMatches.concat(matches);
+            } else {
+                console.log(`⚠️ FAILED TO FETCH TOMORROW FOR SPORT ${SPORT_IDS[index]}:`,
+                    result.reason?.message || "Invalid Response");
+            }
         });
 
-        const eventList = res.data?.events || [];
-        if (!Array.isArray(eventList)) return;
+        if (aggregatedMatches.length === 0) {
+            return; // Preserving cache if all requests failed
+        }
 
-        tomorrowEventsCache = eventList;
+        // 3. UPDATE MEMORY CACHE INSTANTLY (For 0-ms Client Responses)
+        tomorrowEventsCache = aggregatedMatches;
 
-        const currentHash = generateHash(JSON.stringify(eventList.map(e => e.id)));
-        if (currentHash === lastDataHash) return;
+        // 4. DELTA SYNC LOGIC
+        const coreDataForHash = aggregatedMatches.map(e => `${e.id}_${e.status}`);
+        const currentHash = generateHash(JSON.stringify(coreDataForHash));
+
+        if (currentHash === lastDataHash) {
+            return; // No change, skip DB operations
+        }
+
         lastDataHash = currentHash;
 
-        const operations = eventList.map(event => ({
+        // 5. BULK DB WRITE (UPSERT)
+        const operations = aggregatedMatches.map(event => ({
             updateOne: {
                 filter: { eventId: String(event.id) },
                 update: {
                     $set: {
                         eventId: String(event.id),
-                        name: event.eventName || event.name,
+                        name: event.name,
                         eventType: String(event.eventType),
-                        marketId: String(event.marketId || ""),
-                        openDate: event.openDate ? new Date(event.openDate) : new Date(),
+                        marketId: String(event.market?.marketId || event.marketId || ""),
+                        openDate: event.openDateTime ? new Date(event.openDateTime) : new Date(),
                         rawData: event,
                         updatedAt: new Date()
                     }
@@ -81,16 +88,27 @@ async function fetchAndCacheTomorrowEvents() {
             await TomorrowEvent.bulkWrite(operations, { ordered: false });
         }
 
-        const currentIds = eventList.map(e => String(e.id));
-        await TomorrowEvent.deleteMany({ eventId: { $nin: currentIds } });
+        // 6. CLEANUP OLD EVENTS
+        const currentEventIds = aggregatedMatches.map(e => String(e.id));
+        const deleteResult = await TomorrowEvent.deleteMany({ eventId: { $nin: currentEventIds } });
+
+        if (deleteResult.deletedCount > 0) {
+            console.log(`🗑️ REMOVED ${deleteResult.deletedCount} STALE TOMORROW MATCHES FROM DB`);
+        }
 
     } catch (e) {
-        console.log("❌ TOMORROW EVENTS FETCH ERROR:", e.message);
+        console.log("❌ TOMORROW EVENTS SYNC ERROR:", e.message);
     }
 }
 
+/**
+ * Returns the blazing fast cached data. Takes 0.001ms.
+ */
 function getCachedTomorrowEvents() {
     return tomorrowEventsCache;
 }
 
-module.exports = { fetchAndCacheTomorrowEvents, getCachedTomorrowEvents };
+module.exports = {
+    fetchAndCacheTomorrowEvents,
+    getCachedTomorrowEvents
+};

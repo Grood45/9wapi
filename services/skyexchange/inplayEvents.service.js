@@ -2,14 +2,13 @@ const axios = require("axios");
 const crypto = require("crypto");
 const Event = require("../../models/Event");
 const { getCookie } = require("../../controllers/auth/cookie.controller");
+const { fetchStream } = require("./stream.service");
 
-// Original Provider API
-// Use a stable mirror that doesn't block AWS
-const INPLAY_EVENTS_API = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryEvents";
+// User's preferred Skyexchange API
+const INPLAY_API = "https://bxawscf.skyinplay.com/exchange/member/playerService/queryEvents";
 
-// Server In-Memory Cache (Blazing Fast, No DB Load)
+// Server In-Memory Cache for 0-ms UI response
 let inplayEventsCache = [];
-// Hash map to check if data actually changed before touching DB
 let lastDataHash = "";
 
 /**
@@ -20,20 +19,19 @@ function generateHash(dataString) {
 }
 
 /**
- * Fetches Inplay Events, stores in memory instantly, and asynchronously syncs to MongoDB 
- * using Delta Logic (only touches DB if matches added/removed/changed).
+ * Fetches In-play Events from Skyexchange, updates memory cache, 
+ * and syncs to MongoDB using Delta Logic.
  */
 async function fetchAndCacheInplayEvents() {
     try {
         const cookie = getCookie();
         if (!cookie) {
-            console.log("⚠️ SKIPPING INPLAY EVENTS: Cookie not ready");
+            console.log("⚠️ SKIPPING IN-PLAY FETCH: Cookie not ready");
             return;
         }
 
+        // Extract JSESSIONID value for queryPass
         const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
-        const urlObj = new URL(INPLAY_EVENTS_API);
-        const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
 
         const body = new URLSearchParams({
             type: "inplay",
@@ -45,56 +43,45 @@ async function fetchAndCacheInplayEvents() {
             queryPass: queryPass
         }).toString();
 
-        const res = await axios.post(INPLAY_EVENTS_API, body, {
+        const res = await axios.post(INPLAY_API, body, {
             headers: {
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Authorization": queryPass,
-                "Connection": "keep-alive",
+                "Host": "bxawscf.skyinplay.com",
+                "Accept": "application/json, text/javascript, */*; q=0.01",
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Cookie": cookie,
-                "Origin": "https://www.gu21go76.xyz",
-                "Referer": "https://www.gu21go76.xyz/",
-                "source": "1",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-site",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
+                "Origin": "https://bxawscf.skyinplay.com",
+                "Referer": "https://bxawscf.skyinplay.com/exchange/member/inplay",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "X-Requested-With": "XMLHttpRequest",
+                "Cookie": cookie
             },
-            timeout: 15000
+            timeout: 20000
         });
 
-        // Provider returns { events: [...] }
         const eventList = res.data?.events || [];
 
         if (!Array.isArray(eventList)) {
-            console.log("⚠️ UNEXPECTED INPLAY EVENTS RESPONSE:", JSON.stringify(res.data).substring(0, 100));
+            console.log("⚠️ UNEXPECTED IN-PLAY RESPONSE:", JSON.stringify(res.data).substring(0, 200));
             return;
         }
 
-        // 1. UPDATE MEMORY CACHE INSTANTLY (For 0-ms Client Responses)
+        // Update Memory Cache instantly
         inplayEventsCache = eventList;
 
-        // 2. DELTA SYNC LOGIC (The 20-Year Exp Developer Approach)
-        // Check if the exact same list of events was fetched last time. 
-        // If nothing changed (no runs updated here, just match lists), skip dragging MongoDB.
+        if (eventList.length === 0) {
+            // console.log("ℹ️ NO IN-PLAY EVENTS FOUND");
+            return;
+        }
 
-        // Simplifying the list for hash to see if any core data changed (id, name, marketId, etc)
-        const coreDataForHash = eventList.map(e => `${e.id}_${e.marketId}_${e.status}`);
+        // Delta Sync: Only update DB if core data changed
+        const coreDataForHash = eventList.map(e => `${e.id}_${e.status}`);
         const currentHash = generateHash(JSON.stringify(coreDataForHash));
 
         if (currentHash === lastDataHash) {
-            // Data hasn't logically changed. DB is already synced. Do nothing.
-            // console.log("⏭️ INPLAY EVENTS SYNC SKIPPED (No change detected)");
             return;
         }
+        lastDataHash = currentHash;
 
-        // --- Data has changed! Proceed to sync with MongoDB ---
-        lastDataHash = currentHash; // Update hash tracker
-
-        // 3. BULK DB WRITE (UPSERT)
-        // This stores/updates Match names, IDs so Market/Fancy APIs can find the "Match Name" later
+        // Bulk Upsert to MongoDB
         const operations = eventList.map(event => ({
             updateOne: {
                 filter: { eventId: String(event.id) },
@@ -105,7 +92,7 @@ async function fetchAndCacheInplayEvents() {
                         eventType: String(event.eventType),
                         marketId: String(event.marketId || ""),
                         openDate: event.openDate ? new Date(event.openDate) : new Date(),
-                        rawData: event, // Keep raw data just in case
+                        rawData: event,
                         updatedAt: new Date()
                     }
                 },
@@ -115,29 +102,59 @@ async function fetchAndCacheInplayEvents() {
 
         if (operations.length > 0) {
             await Event.bulkWrite(operations, { ordered: false });
-            // console.log(`✅ SYNCED ${operations.length} EVENTS TO MONGODB`);
         }
 
-        // 4. CLEANUP OLD EVENTS (Matches that ended and are no longer in the provider's Inplay list)
+        // Remove Ended matches
         const currentEventIds = eventList.map(e => String(e.id));
-        // Delete any events from DB that are currently NOT in the fresh Inplay list.
-        const deleteResult = await Event.deleteMany({ eventId: { $nin: currentEventIds } });
-
-        if (deleteResult.deletedCount > 0) {
-            console.log(`🗑️ REMOVED ${deleteResult.deletedCount} ENDED MATCHES FROM DB`);
-        }
+        await Event.deleteMany({ eventId: { $nin: currentEventIds } });
 
     } catch (e) {
         if (e.response) {
-            console.log("❌ INPLAY EVENTS FETCH ERROR:", e.response.status);
+            console.log("❌ IN-PLAY FETCH ERROR (Status):", e.response.status);
         } else {
-            console.log("❌ INPLAY EVENTS FETCH ERROR:", e.message);
+            console.log("❌ IN-PLAY FETCH ERROR:", e.message);
         }
     }
 }
 
 /**
- * Returns the blazing fast cached data. Takes 0.001ms.
+ * Periodic Stream URL Updater (Runs in background)
+ */
+async function updateLiveStreams() {
+    try {
+        const events = await Event.find({ "rawData.streamingChannel": { $exists: true, $ne: "0" } });
+
+        if (events.length === 0) return;
+
+        // console.log(`🔄 UPDATING STREAMS FOR ${events.length} EVENTS...`);
+
+        for (const event of events) {
+            try {
+                const streamData = await fetchStream(event.eventId, true);
+
+                if (streamData) {
+                    await Event.updateOne(
+                        { eventId: event.eventId },
+                        {
+                            $set: {
+                                streamUrl: streamData.url || streamData.streamingUrl || null,
+                                "rawData.streamData": streamData,
+                                updatedAt: new Date()
+                            }
+                        }
+                    );
+                }
+            } catch (err) {
+                // Silently skip update errors for individual matches
+            }
+        }
+    } catch (e) {
+        console.error("❌ ERROR IN updateLiveStreams:", e.message);
+    }
+}
+
+/**
+ * Returns the cached data.
  */
 function getCachedInplayEvents() {
     return inplayEventsCache;
@@ -145,5 +162,6 @@ function getCachedInplayEvents() {
 
 module.exports = {
     fetchAndCacheInplayEvents,
+    updateLiveStreams,
     getCachedInplayEvents
 };
