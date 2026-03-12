@@ -1,18 +1,18 @@
 module.exports = {
     apps: [
         {
-            name: "fullgivecan-api",
+            name: "9w-gatekeeper-api",
             script: "./server.js",
-            instances: -1, // Use all CPU cores EXCEPT one (Safe for shared servers)
-            exec_mode: "cluster", // Enable load balancing
-            watch: false, // Don't watch files in production (use specialized tools or CI/CD)
-            max_memory_restart: "500M", // Auto-restart if memory leaks
+            instances: "max", // Use all CPU cores
+            exec_mode: "cluster",
+            watch: false,
+            max_memory_restart: "1G", // Increased for better stability
             env: {
                 NODE_ENV: "production",
             },
             log_date_format: "YYYY-MM-DD HH:mm Z",
-            error_file: "./logs/err.log",
-            out_file: "./logs/out.log",
+            error_file: "./logs/pm2-error.log",
+            out_file: "./logs/pm2-out.log",
             merge_logs: true,
         },
     ],

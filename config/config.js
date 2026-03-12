@@ -14,4 +14,12 @@ module.exports = {
     password: "Sher@123",
     country_code: "91",
   },
+
+  MONEYBUZZ: {
+    domain: "moneybuzz247.com",
+    username: "sher2323",
+    password: "Sher@123",
+    AUTH_API: "https://api.d99hub.com/api/auth",
+    SPORTSBOOK_API: "https://api.d99hub.com/api/client/sports-book-new/1"
+  }
 };

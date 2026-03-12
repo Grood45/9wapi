@@ -1,16 +1,38 @@
 const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 const { PORT } = require("./config/config");
-const { login, loadToken } = require("./controllers/auth.controller");
-const { generateCookie, loadCookie } = require("./controllers/cookie.controller");
+const { login, loadToken } = require("./controllers/auth/auth.controller");
+const { generateCookie, loadCookie } = require("./controllers/auth/cookie.controller");
 
 // 🔹 Start cron jobs (auth + cookie)
-require("./cron/cookie.cron");
-require("./cron/inplay.cron");
+require("./cron/auth/cookie.cron");
+require("./cron/skyexchange/inplay.cron"); // Old one (Optional, can be removed later)
+require("./cron/skyexchange/liveEventsCount.cron");
+require("./cron/sportradar/sportRadarToken.cron");
+// NEW Fast Memory Cron
+require("./cron/skyexchange/inplayEvents.cron"); // NEW Fast Delta-Sync Cron
+require("./cron/skyexchange/todayEvents.cron"); // NEW Fast Today Events Cron
+require("./cron/skyexchange/tomorrowEvents.cron"); // NEW Fast Tomorrow Events Cron
+require("./cron/skyexchange/sportEvents.cron"); // NEW Dynamic Sport-wise Cron (4, 1, 2, 137)
+require("./cron/betfair/cleanupMarketResults.cron"); // NEW Betfair Market Result Auto-Cleanup and Update Cron
 
-const { gliveHandler } = require("./controllers/glive.controller");
-const { getEventStream } = require("./controllers/event.controller");
+const { gliveHandler } = require("./controllers/skyexchange/glive.controller");
+const { getEventStream } = require("./controllers/skyexchange/event.controller");
+const apiAccessGuard = require("./middlewares/apiAccessGuard");
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+// 🔹 Initialize WebSockets
+const { initOddsSocket } = require("./sockets/odds.socket");
+initOddsSocket(io);
 
 // 🔹 Trust Proxy (Required for Nginx + Rate Limit)
 app.set("trust proxy", 1);
@@ -25,16 +47,20 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-      connectSrc: ["'self'", "https://cdn.jsdelivr.net", "https://*.skyinplay.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.socket.io"],
+      connectSrc: ["'self'", "ws:", "wss:", "https://cdn.jsdelivr.net", "https://*.skyinplay.com"],
       imgSrc: ["'self'", "data:", "https:"],
       mediaSrc: ["'self'", "blob:", "https:"],
-      frameSrc: ["'self'", "https:"] // 🟢 ALLOW EXTERNAL IFRAMES
+      frameSrc: ["'self'", "https:"]
     }
   }
 })); // Security Headers
 app.use(compression()); // Gzip Compression
 app.use(cors()); // Allow Cross-Origin Requests
+
+// 🔹 Parse JSON requests (Required for Admin UI POST / PUT)
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Rate Limiting (Prevent Abuse)
 const limiter = rateLimit({
@@ -48,11 +74,80 @@ app.use(limiter);
 app.get("/", (req, res) => res.send("GLIVE SERVER IS RUNNING"));
 
 // ================= API ROUTE =================
-app.get("/glivestreaming/v1/glive/:matchId", gliveHandler);
-app.get("/glivestreaming/v1/event/:eventId", getEventStream);
+app.get("/glivestreaming/v1/glive/:matchId", apiAccessGuard('SkyExchange', '/glivestreaming/v1/glive'), gliveHandler);
+app.get("/glivestreaming/v1/event/:eventId", apiAccessGuard('SkyExchange', '/glivestreaming/v1/event'), getEventStream);
 
-const { getCookie } = require("./controllers/cookie.controller");
-const { getToken } = require("./controllers/auth.controller");
+const { getLiveEventsCountHandler } = require("./controllers/skyexchange/liveEventsCount.controller");
+app.get("/api/v1/inplay/count", apiAccessGuard('SkyExchange', '/api/v1/inplay/count'), getLiveEventsCountHandler); // Fast Cached GET API
+
+const { getInplayEventsHandler } = require("./controllers/skyexchange/inplayEvents.controller");
+app.get("/api/v1/inplay/events", apiAccessGuard('SkyExchange', '/api/v1/inplay/events'), getInplayEventsHandler); // Fast Delta-Sync GET API for Inplay
+
+const { getTodayEventsHandler } = require("./controllers/skyexchange/todayEvents.controller");
+app.get("/api/v1/today/events", apiAccessGuard('SkyExchange', '/api/v1/today/events'), getTodayEventsHandler); // Fast Delta-Sync GET API for Today matches
+
+const { getTomorrowEventsHandler } = require("./controllers/skyexchange/tomorrowEvents.controller");
+app.get("/api/v1/tomorrow/events", apiAccessGuard('SkyExchange', '/api/v1/tomorrow/events'), getTomorrowEventsHandler); // Fast Delta-Sync GET API for Tomorrow matches
+
+const { getEventsBySportHandler } = require("./controllers/skyexchange/sportEvents.controller");
+app.get("/api/v1/events/list/:sportId", apiAccessGuard('SkyExchange', '/api/v1/events/list'), getEventsBySportHandler); // ⚡ DYNAMIC Sport-wise List (4=Cricket, etc.)
+
+const { getSportsbookOddsHandler } = require("./controllers/skyexchange/sportsbook.controller");
+app.get("/api/v1/odds/sportsbook/:eventId", apiAccessGuard('SkyExchange', '/api/v1/odds/sportsbook'), getSportsbookOddsHandler); // ⚡ LIVE Sportsbook Odds (REST API)
+
+const { getFancyOddsHandler } = require("./controllers/skyexchange/fancyOdds.controller");
+app.get("/api/v1/odds/fancy/:eventId", apiAccessGuard('SkyExchange', '/api/v1/odds/fancy'), getFancyOddsHandler); // ⚡ LIVE Fancy/Session Odds (REST API)
+
+const { getBookmakerOddsHandler } = require("./controllers/skyexchange/bookmakerOdds.controller");
+app.get("/api/v1/odds/bookmaker/:eventId", apiAccessGuard('SkyExchange', '/api/v1/odds/bookmaker'), getBookmakerOddsHandler); // ⚡ LIVE Bookmaker Odds (REST API)
+
+const { getFullMarketsHandler } = require("./controllers/skyexchange/fullMarkets.controller");
+app.get("/api/v1/odds/full/:eventId", apiAccessGuard('SkyExchange', '/api/v1/odds/full'), getFullMarketsHandler); // ⚡ LIVE Full Markets/Betfair Odds (REST API)
+
+const { getOtherMenuHandler } = require("./controllers/skyexchange/otherMenu.controller");
+app.get("/api/v1/event/markets/:sportId/:eventId", apiAccessGuard('SkyExchange', '/api/v1/event/markets'), getOtherMenuHandler); // ⚡ Market List (Other Menu)
+
+const { handleSportRadarRefresh, handleGetSportRadarToken } = require("./controllers/sportradar/sportRadarAuth.controller");
+app.get("/api/v1/auth/sportradar/refresh", apiAccessGuard('SportRadar', '/api/v1/auth/sportradar/refresh'), handleSportRadarRefresh); // ⚡ Force Refresh SportRadar Token
+app.get("/api/v1/auth/sportradar/token", apiAccessGuard('SportRadar', '/api/v1/auth/sportradar/token'), handleGetSportRadarToken); // ⚡ Get Current SportRadar Token
+
+const { getSportRadarOddsHandler } = require("./controllers/sportradar/sportRadarMarketsResult.controller");
+app.get("/api/v1/odds/sportradermarkets/result/:sportId/:eventId", apiAccessGuard('SportRadar', '/api/v1/odds/sportradermarkets/result'), getSportRadarOddsHandler); // ⚡ LIVE SportRadar Individual Markets (REST API)
+
+const { getSportRadarBetfairHandler } = require("./controllers/sportradar/sportRadarBetfair.controller");
+app.get("/api/v1/odds/sportradermarkets/accordingbetfair/:sportId/:eventId", apiAccessGuard('SportRadar', '/api/v1/odds/sportradermarkets/accordingbetfair'), getSportRadarBetfairHandler); // ⚡ LIVE SportRadar Betfair Markets (REST API)
+
+const { getSportRadarCoreMarketsHandler } = require("./controllers/sportradar/sportRadarCoreMarkets.controller");
+app.get("/api/v1/odds/sportradermarkets/core/:sportId/:eventId", apiAccessGuard('SportRadar', '/api/v1/odds/sportradermarkets/core'), getSportRadarCoreMarketsHandler); // ⚡ LIVE SportRadar Core Markets (REST API)
+
+const { getThe100exchFancyHandler } = require("./controllers/the100exch/the100exchFancy.controller");
+app.get("/api/v1/odds/t10/fancymarkets/:eventId", apiAccessGuard('The100exch', '/api/v1/odds/t10/fancymarkets'), getThe100exchFancyHandler); // ⚡ LIVE The100exch Fancy Markets (REST API)
+
+const { getT10FancyResultHandler } = require("./controllers/the100exch/t10FancyResult.controller");
+app.get("/api/v1/odds/t10/fancymarketsresult/:eventId", apiAccessGuard('The100exch', '/api/v1/odds/t10/fancymarketsresult'), getT10FancyResultHandler); // ⚡ LIVE The100exch Fancy Markets Result (REST API)
+
+const { getBetfairMarketResultHandler } = require("./controllers/betfair/betfairMarketResult.controller");
+app.get("/api/v1/odds/betfair/marketsresult", apiAccessGuard('Betfair', '/api/v1/odds/betfair/marketsresult'), getBetfairMarketResultHandler); // ⚡ LIVE UK Proxy Betfair Market Results (REST API)
+
+app.get("/test-socket", (req, res) => {
+  res.sendFile(__dirname + "/test_socket.html");
+});
+
+const path = require("path");
+
+// ================= ADMIN PANEL ROUTES =================
+const adminRoutes = require("./routes/admin/admin.routes");
+app.use("/api/v1/admin", adminRoutes);
+
+// ================= SERVE ADMIN UI (REACT VITE) =================
+app.use("/admin", express.static(path.join(__dirname, "admin-panel", "dist")));
+app.get(/^\/admin/, (req, res) => {
+  res.sendFile(path.join(__dirname, "admin-panel", "dist", "index.html"));
+});
+// ========================================================
+
+const { getCookie } = require("./controllers/auth/cookie.controller");
+const { getToken } = require("./controllers/auth/auth.controller");
 
 
 
@@ -132,6 +227,10 @@ const connectDB = require("./config/db");
     console.log("⚡ WARMUP START");
     await connectDB();
 
+    // 0️⃣ Admin Admin Seeding (Phase 4)
+    const { seedAdmin } = require("./controllers/admin/adminAuth.controller");
+    await seedAdmin();
+
     // 1️⃣ FAST STARTUP: Load from DB
     const loadedToken = await loadToken();
     const loadedCookie = await loadCookie();
@@ -153,6 +252,6 @@ const connectDB = require("./config/db");
 })();
 
 // ================= START SERVER =================
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 GLIVE RUNNING ON PORT ${PORT}`);
 });

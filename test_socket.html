@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>9Wicket Socket.io Test</title>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #121212;
+            color: #e0e0e0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            color: #f39c12;
+            text-align: center;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .connected {
+            background: #27ae60;
+            color: white;
+        }
+
+        .disconnected {
+            background: #c0392b;
+            color: white;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background: #2c3e50;
+            color: white;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border-radius: 6px;
+            border: none;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .btn-join {
+            background: #2980b9;
+            color: white;
+        }
+
+        .btn-join:hover {
+            background: #3498db;
+        }
+
+        .btn-leave {
+            background: #7f8c8d;
+            color: white;
+        }
+
+        pre {
+            background: #000;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            color: #2ecc71;
+            border: 1px solid #333;
+            min-height: 200px;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+        }
+
+        .match-info {
+            font-size: 0.9em;
+            color: #bdc3c7;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>🚀 Socket.io Real-time Odds Test</h1>
+
+        <div id="status" class="status disconnected">Disconnected</div>
+
+        <div class="controls">
+            <input type="text" id="eventId" placeholder="Enter Event ID (e.g. -11043762)" value="-11043762">
+            <button class="btn-join" onclick="joinMatch()">Join & Listen</button>
+            <button class="btn-leave" onclick="leaveMatch()">Leave</button>
+        </div>
+
+        <div class="log-header">
+            <h3>Live Log:</h3>
+            <button onclick="clearLog()">Clear</button>
+        </div>
+        <div id="matchName" class="match-info">No match selected</div>
+        <pre id="log">Waiting for data...</pre>
+    </div>
+
+    <script>
+        // ⚡ 20-Year Exp: Standard connection
+        const socket = io();
+
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+        const matchNameEl = document.getElementById('matchName');
+        let currentMatch = null;
+
+        socket.on('connect', () => {
+            statusEl.innerText = "ONLINE - Connected to Server (" + socket.id + ")";
+            statusEl.className = "status connected";
+            console.log("Connected to Socket.io!");
+        });
+
+        socket.on('connect_error', (error) => {
+            statusEl.innerText = "CONNECTION ERROR: " + error.message;
+            statusEl.className = "status disconnected";
+            logEl.innerText = "Failed to connect to Socket.io: " + error.message + "\nPossible issues: Port blocking, CORS, or Server not using HTTP server wrap.";
+            console.error("Socket Connection Error:", error);
+        });
+
+        socket.on('disconnect', (reason) => {
+            statusEl.innerText = "OFFLINE - Disconnected (" + reason + ")";
+            statusEl.className = "status disconnected";
+        });
+
+        // ⚡ LISTEN FOR LIVE UPDATES
+        socket.on('oddsUpdate', (payload) => {
+            console.log("Received Update:", payload);
+
+            // Update display
+            const displayData = {
+                sportsbook: payload.sportsbook,
+                fancy: payload.fancy,
+                bookmaker: payload.bookmaker,
+                fullMarkets: payload.fullMarkets
+            };
+            logEl.innerText = JSON.stringify(displayData, null, 2);
+
+            let eventName = "Unknown Match";
+            if (payload.sportsbook?.eventName) eventName = payload.sportsbook.eventName;
+            else if (payload.bookmaker?.length > 0) eventName = payload.bookmaker[0].eventName;
+            else if (payload.fancy?.length > 0) eventName = payload.fancy[0].eventName;
+            else if (payload.fullMarkets?.mainMarkets?.length > 0) eventName = payload.fullMarkets.mainMarkets[0].eventName;
+
+            matchNameEl.innerText = "Match: " + eventName + " | Updates: " + new Date(payload.timestamp).toLocaleTimeString();
+        });
+
+        function joinMatch() {
+            const id = document.getElementById('eventId').value;
+            if (!id) return alert("Please enter Event ID");
+
+            if (currentMatch) {
+                socket.emit('leaveMatch', currentMatch);
+            }
+
+            currentMatch = id;
+            socket.emit('joinMatch', id);
+            logEl.innerText = "Joining match " + id + "... Please wait for first update...";
+            matchNameEl.innerText = "Requesting data for " + id;
+        }
+
+        function leaveMatch() {
+            if (currentMatch) {
+                socket.emit('leaveMatch', currentMatch);
+                logEl.innerText = "Left match " + currentMatch;
+                matchNameEl.innerText = "No match selected";
+                currentMatch = null;
+            }
+        }
+
+        function clearLog() {
+            logEl.innerText = "Log cleared.";
+        }
+    </script>
+
+</body>
+
+</html>
