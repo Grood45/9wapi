@@ -33,14 +33,21 @@ async function fetchAndCacheLiveEventsCount() {
         const res = await axios.post(LIVE_EVENTS_COUNT_API, body, {
             headers: {
                 "Accept": "application/json, text/plain, */*",
+                "Accept-Encoding": "gzip, deflate, br, zstd",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Authorization": queryPass,
+                "Connection": "keep-alive",
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Origin": origin,
-                "Referer": `${origin}/`,
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
                 "Cookie": cookie,
-                "Authorization": queryPass
+                "Origin": "https://www.gu21go76.xyz",
+                "Referer": "https://www.gu21go76.xyz/",
+                "source": "1",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-site",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
             },
-            timeout: 10000 // 10 seconds max wait
+            timeout: 10000
         });
 
         // Ensure data is array before caching
