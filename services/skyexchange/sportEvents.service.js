@@ -1,101 +1,68 @@
 const axios = require("axios");
 const SportEvent = require("../../models/SportEvent");
-const { getCookie } = require("../../controllers/auth/cookie.controller");
 
-const API_URL = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryEventsWithMarket";
+// 9tens v3 API (Consolidated Sport-wise Listing, No Cookies)
+const BASE_URL = "https://apiv2.9tens.live:5010/v1/spb/get-match-list?version=v3";
 
-// ⚡ 20-Year Exp Strategy: Dynamic Map Cache
-// Key = sportId, Value = Array of events
+// Server In-Memory Map Cache
+// Key = sportId (e.g., "4"), Value = Array of Match Objects
 const sportEventsCache = new Map();
 
 /**
- * Fetch ALL events for a specific sport using recursive pagination (pageNumber).
- * 20-Year Exp Strategy: Auto-paginating crawler that stops when no more data is found.
+ * Fetches events for a specific sportID from 9tens and updates the local cache.
+ * 9tens v3 returns all available matches in a single response (no pagination required).
  */
 async function fetchAndCacheSportEvents(sportId) {
     try {
-        const cookie = getCookie();
-        if (!cookie) return;
-
-        const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
-        let allMergedEvents = [];
-        let pageNumber = 1;
-        let hasMoreData = true;
-        const MAX_PAGES = 10; // Safety guard to prevent infinite loops
-
-        while (hasMoreData && pageNumber <= MAX_PAGES) {
-            const body = new URLSearchParams({
-                eventType: String(sportId),
-                pageNumber: String(pageNumber),
-                eventTs: "-1",
-                marketTs: "-1",
-                selectionTs: "-1",
-                queryPass: queryPass
-            }).toString();
-
-            const urlObj = new URL(API_URL);
-            const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
-
-            const res = await axios.post(API_URL, body, {
-                headers: {
-                    "Accept": "application/json, text/plain, */*",
-                    "Accept-Encoding": "gzip, deflate, br, zstd",
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Authorization": queryPass,
-                    "Connection": "keep-alive",
-                    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                    "Cookie": cookie,
-                    "Origin": "https://www.gu21go76.xyz",
-                    "Referer": "https://www.gu21go76.xyz/",
-                    "source": "1",
-                    "Sec-Fetch-Dest": "empty",
-                    "Sec-Fetch-Mode": "cors",
-                    "Sec-Fetch-Site": "same-site",
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
-                },
-                timeout: 10000
-            });
-
-            const eventList = res.data?.events || [];
-
-            if (Array.isArray(eventList) && eventList.length > 0) {
-                allMergedEvents = [...allMergedEvents, ...eventList];
-                pageNumber++; // Move to next page
-            } else {
-                hasMoreData = false; // Stop crawling
+        const url = `${BASE_URL}&game_type=${sportId}`;
+        const res = await axios.get(url, {
+            timeout: 15000,
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
             }
-        }
+        });
 
-        // Update Memory Cache
-        sportEventsCache.set(String(sportId), allMergedEvents);
+        if (res.data && res.data.status === true && res.data.data) {
+            const matches = res.data.data.matches || [];
 
-        // ⚡ Bulk Upsert match info to central DB Event Store
-        if (allMergedEvents.length > 0) {
-            const operations = allMergedEvents.map(event => ({
-                updateOne: {
-                    filter: { eventId: String(event.id) },
-                    update: {
-                        $set: {
-                            eventId: String(event.id),
-                            name: event.eventName || event.name,
-                            eventType: String(event.eventType),
-                            marketId: String(event.marketId || ""),
-                            openDate: event.openDate ? new Date(event.openDate) : new Date(),
-                            rawData: event,
-                            updatedAt: new Date()
-                        }
-                    },
-                    upsert: true
-                }
-            }));
-            await SportEvent.bulkWrite(operations, { ordered: false });
+            // 1. Update Memory Cache instantly
+            sportEventsCache.set(String(sportId), matches);
+
+            // 2. Perform Bulk Upsert to MongoDB to keep Match metadata fresh
+            if (matches.length > 0) {
+                const operations = matches.map(event => ({
+                    updateOne: {
+                        filter: { eventId: String(event.id) },
+                        update: {
+                            $set: {
+                                eventId: String(event.id),
+                                name: event.name,
+                                eventType: String(event.eventType),
+                                marketId: String(event.market?.marketId || event.marketId || ""),
+                                openDate: event.openDateTime ? new Date(event.openDateTime) : new Date(),
+                                rawData: event,
+                                updatedAt: new Date()
+                            }
+                        },
+                        upsert: true
+                    }
+                }));
+
+                await SportEvent.bulkWrite(operations, { ordered: false });
+                // console.log(`✅ SYNCED ${matches.length} EVENTS FOR SPORT ${sportId}`);
+            }
+        } else {
+            console.log(`⚠️ 9TENS SPORT API INVALID RESPONSE (ID ${sportId}):`, JSON.stringify(res.data).substring(0, 100));
         }
 
     } catch (e) {
-        console.log(`❌ PAGINATED SPORT API ERROR (ID ${sportId}):`, e.message);
+        console.log(`❌ 9TENS SPORT API ERROR (ID ${sportId}):`, e.message);
     }
 }
 
+/**
+ * Returns the cached events from RAM.
+ */
 function getCachedEventsBySport(sportId) {
     return sportEventsCache.get(String(sportId)) || [];
 }
