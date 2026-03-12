@@ -7,7 +7,7 @@ const { generateCookie, loadCookie } = require("./controllers/auth/cookie.contro
 
 // 🔹 Start cron jobs (auth + cookie)
 require("./cron/auth/cookie.cron");
-require("./cron/skyexchange/inplay.cron"); // Old one (Optional, can be removed later)
+// require("./cron/skyexchange/inplay.cron"); // Old one (Optional, can be removed later)
 require("./cron/skyexchange/liveEventsCount.cron");
 require("./cron/sportradar/sportRadarToken.cron");
 // NEW Fast Memory Cron

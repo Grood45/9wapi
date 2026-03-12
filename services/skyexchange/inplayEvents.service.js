@@ -52,9 +52,8 @@ async function fetchAndCacheInplayEvents() {
                 "Origin": origin,
                 "Referer": `${origin}/`,
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0",
-                "X-Requested-With": "XMLHttpRequest",
                 "Cookie": cookie,
-                "Host": urlObj.host
+                "Authorization": queryPass
             },
             timeout: 15000
         });
