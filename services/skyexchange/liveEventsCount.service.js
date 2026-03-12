@@ -1,69 +1,49 @@
 const axios = require("axios");
-const { getCookie } = require("../../controllers/auth/cookie.controller");
 
-// Original Provider API
-// Use a stable mirror that doesn't block AWS
-const LIVE_EVENTS_COUNT_API = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryOnLiveEvents";
+// Stable 9tens API (No Cookies Required)
+const LIVE_EVENTS_COUNT_API = "https://apiv2.9tens.live:5010/v1/spb/get-match-list-count?type=in_play";
 
 // Server In-Memory Cache (Blazing Fast, No DB Load)
-// This will hold data like: [ { eventType: 1, count: 20 }, ... ]
+// Format: [ { eventType: 4, count: 8 }, { eventType: 1, count: 6 }, { eventType: 2, count: 4 } ]
 let liveEventsCountCache = [];
 
 /**
- * Fetches the live event count from the provider and saves it to Server RAM.
- * Runs in the background via Cron, keeping the Origin API safe from user load.
+ * Fetches the live event count from 9tens API and saves it to Server RAM.
+ * Runs in the background via Cron, keeping data fresh without user-driven API load.
  */
 async function fetchAndCacheLiveEventsCount() {
     try {
-        const cookie = getCookie();
-        if (!cookie) {
-            console.log("⚠️ SKIPPING LIVE EVENTS COUNT: Cookie not ready");
-            return;
-        }
-
-        // We use queryPass just like other inplay APIs for consistency if needed.
-        const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
-        const urlObj = new URL(LIVE_EVENTS_COUNT_API);
-        const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
-
-        const body = new URLSearchParams({
-            queryPass: queryPass
-        }).toString();
-
-        const res = await axios.post(LIVE_EVENTS_COUNT_API, body, {
+        const res = await axios.get(LIVE_EVENTS_COUNT_API, {
+            timeout: 10000,
             headers: {
-                "Accept": "application/json, text/plain, */*",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Authorization": queryPass,
-                "Connection": "keep-alive",
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                "Cookie": cookie,
-                "Origin": "https://www.gu21go76.xyz",
-                "Referer": "https://www.gu21go76.xyz/",
-                "source": "1",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-site",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
-            },
-            timeout: 10000
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0",
+                "Accept": "application/json, text/plain, */*"
+            }
         });
 
-        // Ensure data is array before caching
-        if (res.data && Array.isArray(res.data.onLiveEvents)) {
-            // Atomically replace memory reference for 0 downtime
-            liveEventsCountCache = res.data.onLiveEvents;
-            // console.log("✅ UPDATED LIVE EVENTS COUNT IN MEMORY:", liveEventsCountCache.length, "sports");
+        if (res.data && res.data.status === true && res.data.data) {
+            const counts = res.data.data;
+
+            // Map 9tens response to internal eventType format
+            // Sport IDs: Cricket (4), Soccer (1), Tennis (2)
+            const mappedData = [
+                { eventType: 4, count: counts.cricketInplayCount || 0 },
+                { eventType: 1, count: counts.soccerInplayCount || 0 },
+                { eventType: 2, count: counts.tennisInplayCount || 0 }
+            ];
+
+            // Atomically replace memory reference
+            liveEventsCountCache = mappedData;
+            // console.log("✅ 9TENS LIVE COUNT UPDATED:", JSON.stringify(liveEventsCountCache));
         } else {
-            console.log("⚠️ UNEXPECTED LIVE EVENTS COUNT RESPONSE:", JSON.stringify(res.data).substring(0, 100));
+            console.log("⚠️ 9TENS API RESPONSE INVALID:", JSON.stringify(res.data).substring(0, 100));
         }
 
     } catch (e) {
         if (e.response) {
-            console.log("❌ LIVE EVENTS COUNT FETCH ERROR:", e.response.status);
+            console.log("❌ 9TENS COUNT FETCH ERROR (Status):", e.response.status);
         } else {
-            console.log("❌ LIVE EVENTS COUNT FETCH ERROR:", e.message);
+            console.log("❌ 9TENS COUNT FETCH ERROR (Msg):", e.message);
         }
     }
 }
