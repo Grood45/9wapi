@@ -26,5 +26,10 @@ export const PROVIDER_ENDPOINTS = {
     'The100exch': [
         { id: '/api/v1/odds/t10/fancymarkets', pathTemplate: '/api/v1/odds/t10/fancymarkets/:eventId', label: 'T10: Fancy Markets (:eventId)', description: 'T10 exchange specific fancy markets. Requires :eventId.' },
         { id: '/api/v1/odds/t10/fancymarketsresult', pathTemplate: '/api/v1/odds/t10/fancymarketsresult/:eventId', label: 'T10: Fancy Results (:eventId)', description: 'Historical and live results for T10 Fancy. Requires :eventId.' }
+    ],
+    'KingExchange': [
+        { id: '/api/v1/kx/sports', pathTemplate: '/api/v1/kx/sports', label: 'KX: Sports List (Static Cache)', description: 'Returns the cached KingExchange sports list with ultra-low latency.' },
+        { id: '/api/v1/kx/events', pathTemplate: '/api/v1/kx/events', label: 'KX: All Events List', description: 'Real-time list of all KingExchange events grouped by sport.' },
+        { id: '/api/v1/kx/results', pathTemplate: '/api/v1/kx/results/:eventId', label: 'KX: Market Results (:eventId)', description: 'High-speed market results for a specific event ID.' }
     ]
 };

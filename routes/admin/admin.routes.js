@@ -43,6 +43,8 @@ router.route('/access')
 router.route('/access/client/:clientId')
     .get(accessController.getAccessByClient);
 
+router.post('/access/sync/:clientId', accessController.syncClientAccess);
+
 router.route('/access/:id')
     .put(accessController.updateAccess)
     .delete(accessController.deleteAccess);

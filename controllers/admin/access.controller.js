@@ -61,3 +61,30 @@ exports.deleteAccess = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+// Sync/Batch update all access configurations for a client
+exports.syncClientAccess = async (req, res) => {
+    try {
+        const { clientId } = req.params;
+        const { providers } = req.body; // Array of provider configs
+
+        if (!Array.isArray(providers)) {
+            return res.status(400).json({ success: false, message: 'Providers must be an array' });
+        }
+
+        // Delete all existing configs for this client
+        await ClientAccess.deleteMany({ clientId });
+
+        // Create new configs
+        if (providers.length > 0) {
+            const newAccesses = providers.map(p => ({
+                ...p,
+                clientId
+            }));
+            await ClientAccess.insertMany(newAccesses);
+        }
+
+        res.status(200).json({ success: true, message: 'Security Context synchronized successfully' });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

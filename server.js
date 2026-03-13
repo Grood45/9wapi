@@ -129,6 +129,13 @@ app.get("/api/v1/odds/t10/fancymarketsresult/:eventId", apiAccessGuard('The100ex
 const { getBetfairMarketResultHandler } = require("./controllers/betfair/betfairMarketResult.controller");
 app.get("/api/v1/odds/betfair/marketsresult", apiAccessGuard('Betfair', '/api/v1/odds/betfair/marketsresult'), getBetfairMarketResultHandler); // ⚡ LIVE UK Proxy Betfair Market Results (REST API)
 
+const { getKingSportsHandler } = require("./controllers/kingexchange/kingSports.controller");
+const { getKingEventsHandler, getKingResultsHandler } = require("./controllers/kingexchange/kingExchange.controller");
+
+app.get("/api/v1/kx/sports", apiAccessGuard('KingExchange', '/api/v1/kx/sports'), getKingSportsHandler); // Legacy Sports List
+app.get("/api/v1/kx/events", apiAccessGuard('KingExchange', '/api/v1/kx/events'), getKingEventsHandler); // ⚡ New High-Speed All Events
+app.get("/api/v1/kx/results/:eventId", apiAccessGuard('KingExchange', '/api/v1/kx/results'), getKingResultsHandler); // ⚡ New High-Speed Market Results
+
 app.get("/test-socket", (req, res) => {
   res.sendFile(__dirname + "/test_socket.html");
 });
@@ -244,6 +251,14 @@ const connectDB = require("./config/db");
       await generateCookie(token);
       console.log("✅ SYSTEM READY (FRESH LOGIN)");
     }
+
+    // 3️⃣ KingExchange Warmup (Fetch once and cache forever)
+    const { fetchAndCacheKingSports } = require("./services/kingexchange/kingSports.service");
+    await fetchAndCacheKingSports();
+
+    // 4️⃣ KingExchange King-Level Sync (Discovery + Result Worker)
+    const { startKingSync } = require("./cron/kingexchange/kingSync.cron");
+    startKingSync();
 
     console.log("✅ SYSTEM READY: TOKEN & COOKIE SET");
   } catch (e) {

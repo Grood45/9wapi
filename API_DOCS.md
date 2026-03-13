@@ -56,7 +56,18 @@ These APIs use an active background polling proxy over the Betfair UK servers fo
 
 ---
 
-## 🔹 5. Internal & Debug APIs
+## 🔹 5. KingExchange APIs
+These APIs pull static and live data from the KingExchange provider.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **GET** | `/api/v1/kx/sports` | Fetches the static sports list with 100% RAM + MongoDB caching. |
+| **GET** | `/api/v1/kx/events` | High-speed list of all events (grouped by sport) with 0ms RAM caching. |
+| **GET** | `/api/v1/kx/results/:eventId` | Fetches market results for a specific event with 24-hour persistence and 0ms RAM caching. |
+
+---
+
+## 🔹 6. Internal & Debug APIs
 Utility endpoints used for system health checks, testing, and debugging.
 
 | Method | Endpoint | Description |

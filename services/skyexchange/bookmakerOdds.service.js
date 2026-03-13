@@ -1,11 +1,12 @@
 const axios = require("axios");
-const { getCookie } = require("../../controllers/auth/cookie.controller");
 
-const API_URL = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryBookMakerMarkets";
+// 9tens Bookmaker Markets API (No Cookies Required - High Stability)
+const BASE_URL = "https://apiv2.9tens.live:5010/v1/spb/get-bookmaker-market";
 
 /**
- * ⚡ 20-Year Exp Strategy: On-Demand Throttled Bookmaker Odds.
- * Follows the same pattern as Sportsbook and Fancy for stability.
+ * ⚡ 20-Year Exp Strategy: On-Demand Throttled Bookmaker Odds
+ * Migrated to 9tens provider for cookie-less, stable operation.
+ * Maintains efficient Map-based caching and concurrency locking.
  */
 const activeBookmakerCache = new Map();
 const fetchLocks = new Map();
@@ -20,7 +21,7 @@ async function fetchBookmakerOdds(eventId) {
             return cached.data;
         }
 
-        // 2. Concurrency Lock
+        // 2. Concurrency Lock (Thundering Herd Protection)
         if (fetchLocks.has(eventId)) {
             return fetchLocks.get(eventId);
         }
@@ -28,42 +29,30 @@ async function fetchBookmakerOdds(eventId) {
         // 3. Perform Fetch
         const fetchPromise = (async () => {
             try {
-                const cookie = getCookie();
-                if (!cookie) throw new Error("COOKIE_NOT_SET");
-
-                const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
-                const urlObj = new URL(API_URL);
-                const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
-
-                const body = new URLSearchParams({
-                    eventId: String(eventId),
-                    queryPass: queryPass
-                }).toString();
-
-                const res = await axios.post(API_URL, body, {
+                const url = `${BASE_URL}?match_id=${eventId}`;
+                
+                const res = await axios.get(url, {
                     headers: {
                         "Accept": "application/json, text/plain, */*",
-                        "Accept-Encoding": "gzip, deflate, br, zstd",
-                        "Accept-Language": "en-US,en;q=0.9",
-                        "Authorization": queryPass,
-                        "Connection": "keep-alive",
-                        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                        "Cookie": cookie,
-                        "Origin": "https://www.gu21go76.xyz",
-                        "Referer": "https://www.gu21go76.xyz/",
-                        "source": "1",
-                        "Sec-Fetch-Dest": "empty",
-                        "Sec-Fetch-Mode": "cors",
-                        "Sec-Fetch-Site": "same-site",
                         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
                     },
                     timeout: 8000
                 });
 
-                const data = res.data;
-                activeBookmakerCache.set(eventId, { data, lastFetched: Date.now() });
-                return data;
+                if (res.data && res.data.status === true) {
+                    const data = res.data.data;
+                    activeBookmakerCache.set(eventId, { data, lastFetched: Date.now() });
+                    return data;
+                } else {
+                    console.log(`⚠️ 9TENS BOOKMAKER API INVALID (${eventId}):`, JSON.stringify(res.data).substring(0, 100));
+                    // Return stale data if available on API failure
+                    return cached ? cached.data : null;
+                }
 
+            } catch (e) {
+                console.log(`❌ 9TENS BOOKMAKER FETCH ERROR (${eventId}):`, e.message);
+                // Graceful Fallback: Return last known good data from RAM if API is down
+                return cached ? cached.data : null;
             } finally {
                 fetchLocks.delete(eventId);
             }
@@ -73,7 +62,7 @@ async function fetchBookmakerOdds(eventId) {
         return fetchPromise;
 
     } catch (e) {
-        console.log(`❌ BOOKMAKER ODDS ERROR (${eventId}):`, e.message);
+        console.log(`❌ BOOKMAKER ODDS SERVICE ERROR (${eventId}):`, e.message);
         return null;
     }
 }

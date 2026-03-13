@@ -1,21 +1,23 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { HiKey, HiClock, HiGlobeAlt, HiOutlineLightningBolt, HiCheckCircle } from 'react-icons/hi';
+import { HiKey, HiClock, HiGlobeAlt, HiOutlineLightningBolt, HiCheckCircle, HiChevronDown, HiChevronUp, HiPlus, HiTrash } from 'react-icons/hi';
 import { PROVIDER_ENDPOINTS } from '../constants/apiEndpoints';
+
+const ALL_PROVIDERS = ['SkyExchange', 'KingExchange', 'Betfair', 'SportRadar', 'The100exch'];
 
 export default function AccessControl() {
     const [clients, setClients] = useState([]);
-    const [accesses, setAccesses] = useState([]);
+    const [accessData, setAccessData] = useState([]); // Array of { client, rules: [] }
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [editId, setEditId] = useState(null);
+    
+    // Form State
+    const [selectedClientId, setSelectedClientId] = useState('');
+    const [validFrom, setValidFrom] = useState('');
+    const [validUntil, setValidUntil] = useState('');
+    const [whitelistedIPs, setWhitelistedIPs] = useState([]);
     const [ipInput, setIpInput] = useState('');
-
-    const [formData, setFormData] = useState({
-        clientId: '', providerName: 'SportRadar', endpoints: [],
-        validFrom: '', validUntil: '', whitelistedIPs: [],
-        requestLimitPerSecond: -1, status: 'active'
-    });
+    const [activeProviders, setActiveProviders] = useState({}); // { 'SkyExchange': { enabled: true, endpoints: [] } }
 
     useEffect(() => { fetchData(); }, []);
 
@@ -24,37 +26,40 @@ export default function AccessControl() {
             setLoading(true);
             const [cRes, aRes] = await Promise.all([api.get('/clients'), api.get('/access')]);
             setClients(cRes.data || []);
-            setAccesses(aRes.data || []);
+            
+            // Group by Client
+            const grouped = {};
+            (aRes.data || []).forEach(acc => {
+                const cid = acc.clientId?._id || acc.clientId;
+                if (!grouped[cid]) grouped[cid] = { client: acc.clientId, rules: [] };
+                grouped[cid].rules.push(acc);
+            });
+            setAccessData(Object.values(grouped));
         } finally { setLoading(false); }
     };
 
-    const handleAddIp = () => {
-        if (ipInput.trim() && !formData.whitelistedIPs.includes(ipInput.trim())) {
-            setFormData(p => ({ ...p, whitelistedIPs: [...p.whitelistedIPs, ipInput.trim()] }));
-            setIpInput('');
-        }
-    };
+    const openModal = (clientGroup = null) => {
+        const now = new Date();
+        const nextMonth = new Date(); nextMonth.setMonth(nextMonth.getMonth() + 1);
 
-    const handleRemoveIp = (ip) => setFormData(p => ({ ...p, whitelistedIPs: p.whitelistedIPs.filter(i => i !== ip) }));
-
-    const openForm = (acc = null) => {
-        if (acc) {
-            setEditId(acc._id);
-            setFormData({
-                ...acc,
-                clientId: acc.clientId._id || acc.clientId,
-                validFrom: new Date(acc.validFrom).toISOString().slice(0, 16),
-                validUntil: new Date(acc.validUntil).toISOString().slice(0, 16),
-                endpoints: acc.endpoints || []
+        if (clientGroup) {
+            const firstRule = clientGroup.rules[0];
+            setSelectedClientId(clientGroup.client._id);
+            setValidFrom(new Date(firstRule.validFrom).toISOString().slice(0, 16));
+            setValidUntil(new Date(firstRule.validUntil).toISOString().slice(0, 16));
+            setWhitelistedIPs(firstRule.whitelistedIPs || []);
+            
+            const providersMap = {};
+            clientGroup.rules.forEach(r => {
+                providersMap[r.providerName] = { enabled: true, endpoints: r.endpoints || [] };
             });
+            setActiveProviders(providersMap);
         } else {
-            setEditId(null);
-            const now = new Date(); const nextMonth = new Date(); nextMonth.setMonth(nextMonth.getMonth() + 1);
-            setFormData({
-                clientId: clients[0]?._id || '', providerName: 'SportRadar', endpoints: [],
-                validFrom: now.toISOString().slice(0, 16), validUntil: nextMonth.toISOString().slice(0, 16),
-                whitelistedIPs: [], requestLimitPerSecond: -1, status: 'active'
-            });
+            setSelectedClientId(clients[0]?._id || '');
+            setValidFrom(now.toISOString().slice(0, 16));
+            setValidUntil(nextMonth.toISOString().slice(0, 16));
+            setWhitelistedIPs([]);
+            setActiveProviders({});
         }
         setShowModal(true);
     };
@@ -62,17 +67,51 @@ export default function AccessControl() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (editId) await api.put(`/access/${editId}`, formData);
-            else await api.post('/access', formData);
+            const payload = {
+                providers: Object.entries(activeProviders)
+                    .filter(([name, config]) => config.enabled)
+                    .map(([name, config]) => ({
+                        providerName: name,
+                        endpoints: config.endpoints,
+                        validFrom,
+                        validUntil,
+                        whitelistedIPs,
+                        status: 'active'
+                    }))
+            };
+            
+            await api.post(`/access/sync/${selectedClientId}`, payload);
             setShowModal(false);
             fetchData();
-        } catch (error) { alert('Validation failed. Make sure unique provider rule.'); }
+        } catch (error) {
+            alert('Operation failed. Check if client selection is correct.');
+        }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm('Revoke access fully?')) {
-            await api.delete(`/access/${id}`);
-            fetchData();
+    const toggleProvider = (name) => {
+        setActiveProviders(prev => ({
+            ...prev,
+            [name]: {
+                enabled: !prev[name]?.enabled,
+                endpoints: prev[name]?.endpoints || []
+            }
+        }));
+    };
+
+    const toggleEndpoint = (providerName, endpointId) => {
+        setActiveProviders(prev => {
+            const current = prev[providerName] || { enabled: true, endpoints: [] };
+            const endpoints = current.endpoints.includes(endpointId)
+                ? current.endpoints.filter(id => id !== endpointId)
+                : [...current.endpoints, endpointId];
+            return { ...prev, [providerName]: { ...current, endpoints } };
+        });
+    };
+
+    const addIp = () => {
+        if (ipInput.trim() && !whitelistedIPs.includes(ipInput.trim())) {
+            setWhitelistedIPs([...whitelistedIPs, ipInput.trim()]);
+            setIpInput('');
         }
     };
 
@@ -80,29 +119,37 @@ export default function AccessControl() {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold">Firewall Policies</h2>
-                <button onClick={() => openForm()} className="btn-primary"><HiKey /> Deploy Rule</button>
+                <button onClick={() => openModal()} className="btn-primary flex items-center gap-2"><HiPlus /> New Policy</button>
             </div>
 
-            {loading ? <div className="text-slate-400 p-8">Loading rules...</div> : (
+            {loading ? <div className="text-slate-400 p-8">Loading policies...</div> : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {accesses.map(acc => (
-                        <div key={acc._id} className="card-hoverable p-6 relative group flex flex-col">
-                            <div className={`absolute top-0 right-0 px-3 py-1 text-xs font-bold rounded-bl-lg ${acc.status === 'active' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
-                                {acc.status.toUpperCase()}
+                    {accessData.map(group => (
+                        <div key={group.client?._id} className="card-hoverable p-6 border-l-4 border-brand-accent">
+                            <div className="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 className="text-lg font-bold">{group.client?.name || 'Unknown Client'}</h3>
+                                    <p className="text-xs text-slate-500">ID: {group.client?._id}</p>
+                                </div>
+                                <div className="bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded text-[10px] font-bold">PROTECTED</div>
                             </div>
-                            <div className="mb-4">
-                                <h3 className="text-lg font-bold">{acc.clientId?.name || 'Unknown'}</h3>
-                                <p className="text-brand-accent font-semibold text-sm">{acc.providerName}</p>
+                            
+                            <div className="space-y-3 mb-6 flex-1 text-sm">
+                                <div className="space-y-1">
+                                    <p className="text-xs text-slate-500">Active Providers</p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {group.rules.map(r => (
+                                            <span key={r.providerName} className="bg-slate-800 text-brand-accent px-2 py-0.5 rounded text-[10px] font-bold border border-brand-accent/20">
+                                                {r.providerName}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <p className="flex items-center gap-2"><HiGlobeAlt className="text-slate-500" /> {group.rules[0].whitelistedIPs?.length} IPs whitelisted</p>
+                                <p className="flex items-center gap-2"><HiClock className="text-slate-500" /> Exp: {new Date(group.rules[0].validUntil).toLocaleDateString()}</p>
                             </div>
-                            <div className="space-y-2 mb-6 text-sm flex-1">
-                                <p className="flex items-center gap-2"><HiGlobeAlt className="text-slate-500" /> IP: {acc.whitelistedIPs?.length ? acc.whitelistedIPs.join(', ') : 'PUBLIC APP'}</p>
-                                <p className="flex items-center gap-2"><HiCheckCircle className="text-slate-500" /> Routes: {acc.endpoints?.length ? `${acc.endpoints.length} Active` : 'None Assigned'}</p>
-                                <p className="flex items-center gap-2"><HiClock className="text-slate-500" /> Till: {new Date(acc.validUntil).toLocaleDateString()}</p>
-                            </div>
-                            <div className="flex justify-between border-t border-slate-700/50 pt-3">
-                                <button onClick={() => handleDelete(acc._id)} className="text-red-400 hover:text-red-300 text-sm">Delete</button>
-                                <button onClick={() => openForm(acc)} className="btn-secondary text-xs py-1 px-3">Edit</button>
-                            </div>
+
+                            <button onClick={() => openModal(group)} className="w-full btn-secondary text-xs py-2">Modify Security Context</button>
                         </div>
                     ))}
                 </div>
@@ -111,55 +158,93 @@ export default function AccessControl() {
             {showModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
                     <form onSubmit={handleSubmit} className="bg-brand-panel w-full max-w-2xl rounded-2xl p-6 shadow-2xl border border-slate-700 my-8">
-                        <h3 className="text-xl font-bold mb-6 border-b border-slate-700 pb-2">Modify Security Context</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label className="text-sm text-slate-400">Client</label><select className="input-field" value={formData.clientId} onChange={e => setFormData({ ...formData, clientId: e.target.value })}>{clients.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}</select></div>
-                            <div><label className="text-sm text-slate-400">Provider Region</label><select className="input-field" value={formData.providerName} onChange={e => setFormData({ ...formData, providerName: e.target.value, endpoints: [] })}><option>SportRadar</option><option>Betfair</option><option>SkyExchange</option><option>The100exch</option></select></div>
-                            <div><label className="text-sm text-slate-400">Valid Start</label><input type="datetime-local" className="input-field" required value={formData.validFrom} onChange={e => setFormData({ ...formData, validFrom: e.target.value })} /></div>
-                            <div><label className="text-sm text-slate-400">Expiry End</label><input type="datetime-local" className="input-field" required value={formData.validUntil} onChange={e => setFormData({ ...formData, validUntil: e.target.value })} /></div>
+                        <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-2">
+                            <h3 className="text-xl font-bold">Modify Security Context</h3>
+                            <button type="button" onClick={() => setShowModal(false)} className="text-slate-400 hover:text-white">✕</button>
                         </div>
 
-                        <div className="mt-6">
-                            <label className="text-sm text-slate-400 block mb-2">Assign API Endpoints ({formData.providerName})</label>
-                            <div className="bg-slate-900 border border-slate-700 rounded-xl p-4 max-h-48 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {PROVIDER_ENDPOINTS[formData.providerName]?.map(ep => (
-                                    <label key={ep.id} className="flex items-center gap-3 p-2 hover:bg-slate-800 rounded-lg cursor-pointer transition-colors group">
-                                        <input
-                                            type="checkbox"
-                                            className="w-4 h-4 rounded border-slate-600 text-brand-accent focus:ring-brand-accent bg-slate-800"
-                                            checked={formData.endpoints.includes(ep.id)}
-                                            onChange={(e) => {
-                                                const newEndpoints = e.target.checked
-                                                    ? [...formData.endpoints, ep.id]
-                                                    : formData.endpoints.filter(id => id !== ep.id);
-                                                setFormData({ ...formData, endpoints: newEndpoints });
-                                            }}
-                                        />
-                                        <span className="text-sm text-slate-300 group-hover:text-white">{ep.label}</span>
-                                    </label>
+                        {/* Top Level Config */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Client</label>
+                                <select className="input-field" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}>
+                                    {clients.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Valid Start</label>
+                                    <input type="datetime-local" className="input-field text-xs" required value={validFrom} onChange={e => setValidFrom(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Valid Until</label>
+                                    <input type="datetime-local" className="input-field text-xs" required value={validUntil} onChange={e => setValidUntil(e.target.value)} />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Providers & Endpoints */}
+                        <div className="space-y-4 mb-6">
+                            <label className="text-xs text-slate-400 font-bold uppercase block">Provider Matrix & API Entitlements</label>
+                            <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
+                                {ALL_PROVIDERS.map(pName => {
+                                    const isActive = activeProviders[pName]?.enabled;
+                                    return (
+                                        <div key={pName} className={`border rounded-xl transition-all ${isActive ? 'border-brand-accent/50 bg-brand-accent/5' : 'border-slate-800 bg-slate-900/50'}`}>
+                                            <div onClick={() => toggleProvider(pName)} className="flex items-center justify-between p-3 cursor-pointer select-none">
+                                                <div className="flex items-center gap-3">
+                                                    <input type="checkbox" checked={!!isActive} readOnly className="w-4 h-4 rounded text-brand-accent bg-slate-800 border-slate-700" />
+                                                    <span className={`font-bold text-sm ${isActive ? 'text-brand-accent' : 'text-slate-500'}`}>{pName}</span>
+                                                </div>
+                                                {isActive ? <HiChevronUp className="text-slate-500" /> : <HiChevronDown className="text-slate-500" />}
+                                            </div>
+                                            
+                                            {isActive && (
+                                                <div className="p-3 pt-0 grid grid-cols-1 md:grid-cols-2 gap-2 border-t border-slate-700/30 mt-1">
+                                                    {PROVIDER_ENDPOINTS[pName]?.map(ep => (
+                                                        <label key={ep.id} className="flex items-center gap-2 p-2 hover:bg-slate-800/50 rounded-lg cursor-pointer transition-colors group">
+                                                            <input
+                                                                type="checkbox"
+                                                                className="w-3.5 h-3.5 rounded text-brand-accent bg-slate-900 border-slate-700"
+                                                                checked={activeProviders[pName]?.endpoints.includes(ep.id)}
+                                                                onChange={() => toggleEndpoint(pName, ep.id)}
+                                                            />
+                                                            <span className="text-xs text-slate-300 group-hover:text-white truncate" title={ep.description}>{ep.label}</span>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* IP Whitelist */}
+                        <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-700">
+                            <div className="flex items-center gap-2 text-emerald-400 mb-3">
+                                <HiOutlineLightningBolt className="w-4 h-4" />
+                                <span className="font-bold text-xs uppercase tracking-wider">IP Security Whitelist</span>
+                            </div>
+                            <div className="flex gap-2 mb-3">
+                                <input className="input-field text-xs py-2" value={ipInput} onChange={e => setIpInput(e.target.value)} placeholder="Enter IP address (e.g. 103.x.x.x)" onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addIp())} />
+                                <button type="button" onClick={addIp} className="btn-secondary text-xs px-4">Add</button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {whitelistedIPs.length === 0 && <span className="text-slate-500 text-xs italic">No IPs added. Using Public access if 0.0.0.0 is present.</span>}
+                                {whitelistedIPs.map(ip => (
+                                    <span key={ip} className="bg-brand-accent/20 border border-brand-accent/30 px-2 py-1 rounded text-[10px] text-white flex items-center gap-1 group">
+                                        {ip}
+                                        <button type="button" onClick={() => setWhitelistedIPs(whitelistedIPs.filter(i => i !== ip))} className="text-slate-400 hover:text-red-400 transition-colors">✕</button>
+                                    </span>
                                 ))}
-                                {(!PROVIDER_ENDPOINTS[formData.providerName] || PROVIDER_ENDPOINTS[formData.providerName].length === 0) && (
-                                    <div className="col-span-2 text-center text-slate-500 py-4 italic">No specific endpoints defined for this provider.</div>
-                                )}
                             </div>
                         </div>
 
-                        <div className="mt-4 p-4 bg-emerald-500/5 border border-emerald-500/20 rounded-xl">
-                            <div className="flex items-center gap-2 text-emerald-400">
-                                <HiOutlineLightningBolt className="w-5 h-5" />
-                                <span className="font-bold text-sm">Security Policy: Whitelist Only</span>
-                            </div>
-                            <p className="text-xs text-slate-400 mt-1">Rate limiting is disabled by default. Security is enforced strictly via the IP Whitelist below.</p>
+                        <div className="flex gap-3 justify-end mt-8 pt-4 border-t border-slate-700">
+                            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary text-sm px-6">Cancel</button>
+                            <button type="submit" className="btn-primary text-sm px-6">Provision Security Context</button>
                         </div>
-                        <div className="mt-4">
-                            <label className="text-sm">Whitelisted IPs</label>
-                            <div className="flex gap-2 mb-2">
-                                <input className="input-field" value={ipInput} onChange={e => setIpInput(e.target.value)} placeholder="0.0.0.0" />
-                                <button type="button" onClick={handleAddIp} className="btn-secondary">Add</button>
-                            </div>
-                            <div className="flex flex-wrap gap-2">{formData.whitelistedIPs.map(ip => <span key={ip} className="bg-brand-accent/30 px-2 py-1 rounded text-sm text-white" onClick={() => handleRemoveIp(ip)}>{ip} x</span>)}</div>
-                        </div>
-                        <div className="flex gap-3 justify-end mt-6"><button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancel</button><button type="submit" className="btn-primary">Provision API Gateway</button></div>
                     </form>
                 </div>
             )}

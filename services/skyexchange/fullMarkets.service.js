@@ -1,11 +1,12 @@
 const axios = require("axios");
-const { getCookie } = require("../../controllers/auth/cookie.controller");
 
-const API_URL = "https://bkqawscf.gu21go76.xyz/exchange/member/playerService/queryFullMarkets";
+// 9tens Match Odds (Betfair) API (No Cookies Required - High Stability)
+const BASE_URL = "https://apiv2.9tens.live:5010/v1/spb/get-match-odds";
 
 /**
- * ⚡ 20-Year Exp Strategy: On-Demand Throttled Full Markets.
- * Follows the same pattern as Sportsbook, Fancy, and Bookmaker for stability.
+ * ⚡ 20-Year Exp Strategy: On-Demand Throttled Full Markets
+ * Migrated to 9tens provider for cookie-less, stable operation.
+ * Maintains efficient Map-based caching and concurrency locking.
  */
 const activeFullMarketsCache = new Map();
 const fetchLocks = new Map();
@@ -21,7 +22,7 @@ async function fetchFullMarkets(eventId, marketId = "") {
             return cached.data;
         }
 
-        // 2. Concurrency Lock
+        // 2. Concurrency Lock (Thundering Herd Protection)
         if (fetchLocks.has(cacheKey)) {
             return fetchLocks.get(cacheKey);
         }
@@ -29,45 +30,31 @@ async function fetchFullMarkets(eventId, marketId = "") {
         // 3. Perform Fetch
         const fetchPromise = (async () => {
             try {
-                const cookie = getCookie();
-                if (!cookie) throw new Error("COOKIE_NOT_SET");
-
-                const queryPass = cookie.split("JSESSIONID=")[1]?.split(";")[0] || "";
-                const urlObj = new URL(API_URL);
-                const origin = `${urlObj.protocol}//${urlObj.host.replace('bkqawscf.', 'www.')}`;
-
-                const params = {
-                    eventId: String(eventId),
-                    queryPass: queryPass
-                };
-                if (marketId) params.marketId = String(marketId);
-
-                const body = new URLSearchParams(params).toString();
-
-                const res = await axios.post(API_URL, body, {
+                // match_ids can take multiple IDs, but we fetch one for this specific call
+                const url = `${BASE_URL}?match_ids=${eventId}`;
+                
+                const res = await axios.get(url, {
                     headers: {
                         "Accept": "application/json, text/plain, */*",
-                        "Accept-Encoding": "gzip, deflate, br, zstd",
-                        "Accept-Language": "en-US,en;q=0.9",
-                        "Authorization": queryPass,
-                        "Connection": "keep-alive",
-                        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                        "Cookie": cookie,
-                        "Origin": "https://www.gu21go76.xyz",
-                        "Referer": "https://www.gu21go76.xyz/",
-                        "source": "1",
-                        "Sec-Fetch-Dest": "empty",
-                        "Sec-Fetch-Mode": "cors",
-                        "Sec-Fetch-Site": "same-site",
                         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0"
                     },
                     timeout: 8000
                 });
 
-                const data = res.data;
-                activeFullMarketsCache.set(cacheKey, { data, lastFetched: Date.now() });
-                return data;
+                if (res.data && res.data.status === true) {
+                    const data = res.data.data;
+                    activeFullMarketsCache.set(cacheKey, { data, lastFetched: Date.now() });
+                    return data;
+                } else {
+                    console.log(`⚠️ 9TENS FULL MARKETS API INVALID (${eventId}):`, JSON.stringify(res.data).substring(0, 100));
+                    // Return stale data if available on API failure
+                    return cached ? cached.data : null;
+                }
 
+            } catch (e) {
+                console.log(`❌ 9TENS FULL MARKETS FETCH ERROR (${eventId}):`, e.message);
+                // Graceful Fallback: Return last known good data from RAM if API is down
+                return cached ? cached.data : null;
             } finally {
                 fetchLocks.delete(cacheKey);
             }
@@ -77,11 +64,7 @@ async function fetchFullMarkets(eventId, marketId = "") {
         return fetchPromise;
 
     } catch (e) {
-        if (e.response) {
-            console.log(`❌ FULL MARKETS ERROR (${eventId}): Status ${e.response.status}, Data:`, JSON.stringify(e.response.data));
-        } else {
-            console.log(`❌ FULL MARKETS ERROR (${eventId}):`, e.message);
-        }
+        console.log(`❌ FULL MARKETS SERVICE ERROR (${eventId}):`, e.message);
         return null;
     }
 }
