@@ -1,8 +1,8 @@
 const cron = require("node-cron");
 const { fetchAndCacheSportEvents } = require("../../services/skyexchange/sportEvents.service");
 
-// POPULAR SPORTS IDS
-const SPORTS = ["4", "1", "2", "137"]; // Cricket, Soccer, Tennis, E-Soccer
+// POPULAR SPORTS IDS (Cricket, Soccer, Tennis)
+const SPORTS = ["4", "1", "2"]; 
 
 // ⏰ EVERY 5 MINUTES (Refresh all sports)
 cron.schedule("*/5 * * * *", async () => {
