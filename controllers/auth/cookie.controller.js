@@ -7,39 +7,63 @@ let GLOBAL_COOKIE = null;
 let COOKIE_REFRESHING = false;
 
 async function generateCookie(providedToken) {
-  // 🔒 agar already process chal raha hai
+  const instanceId = process.env.NODE_APP_INSTANCE || "0";
+
+  // 🔒 Local memory lock
   if (COOKIE_REFRESHING) return GLOBAL_COOKIE;
 
-  COOKIE_REFRESHING = true;
-  let NEW_COOKIE = null;
-
   try {
-    // 🔹 STEP 0: token check
+    COOKIE_REFRESHING = true;
+
+    // 🛡️ STEP 0: Cluster Coordination
+    if (instanceId !== "0") {
+        console.log(`[Instance ${instanceId}] Waiting for Master to generate cookie...`);
+        await new Promise(r => setTimeout(r, 5000));
+    }
+
+    // 🛡️ STEP 1: Freshness Check
+    const existing = await SystemConfig.findOne({ key: "COOKIE" });
+    const thirtyMinsAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+    if (existing && existing.updatedAt > thirtyMinsAgo) {
+        console.log(`✅ [Instance ${instanceId}] Using Fresh Cookie from DB`);
+        const cookieStr = `JSESSIONID=${existing.value.value}`;
+        GLOBAL_COOKIE = cookieStr;
+        return GLOBAL_COOKIE;
+    }
+
+    // 🛡️ STEP 2: Only master (or if missing) generates
+    if (instanceId !== "0") {
+        console.log(`⚠️ [Instance ${instanceId}] Cookie still stale, retrying load...`);
+        await new Promise(r => setTimeout(r, 2000));
+        return await loadCookie();
+    }
+
+    console.log(`🚀 [Instance ${instanceId}] Generating NEW Session Cookie...`);
+
+    // 🔹 STEP A: token check
     const token = providedToken || getToken();
     if (!token) throw new Error("TOKEN_NOT_READY");
 
-    // 🔹 STEP 1: GAME URL API (AUTH TOKEN REQUIRED)
+    // 🔹 STEP B: GAME URL API
     const apiRes = await axios.get(GAME_API, {
       headers: {
         Authorization: token,
         Origin: "https://www.gugobet.net",
         Referer: "https://www.gugobet.net/",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
       },
       timeout: 15000,
-      validateStatus: () => true, // ❗ prevent crash on 410
+      validateStatus: () => true,
     });
 
     if (apiRes.status !== 200 || !apiRes.data?.data?.url) {
-      console.log("⚠️ GAME API FAILED Content:", JSON.stringify(apiRes.data));
-      console.log("⚠️ GAME API FAILED Status:", apiRes.status);
       throw new Error(`GAME_API_FAILED_${apiRes.status}`);
     }
 
     const { url, params } = apiRes.data.data;
 
-    // 🔹 STEP 2: NO-BROWSER FETCH (Axios manually handles the POST)
+    // 🔹 STEP C: AXIOS FETCH
     console.log("📡 FETCHING SESSION COOKIE (AXIOS)...");
     const sessionRes = await axios.post(url, new URLSearchParams(params).toString(), {
       headers: {
@@ -47,38 +71,27 @@ async function generateCookie(providedToken) {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
       },
       timeout: 20000,
-      maxRedirects: 0, // We only need the headers from the first response
+      maxRedirects: 0,
       validateStatus: (status) => status >= 200 && status < 400,
     });
 
     const setCookie = sessionRes.headers["set-cookie"];
-    if (!setCookie || setCookie.length === 0) {
-      console.log("⚠️ NO COOKIE IN RESPONSE HEADERS");
-      throw new Error("COOKIE_HEADER_MISSING");
-    }
+    if (!setCookie) throw new Error("COOKIE_HEADER_MISSING");
 
-    // Find JSESSIONID in array of cookies
     const jsessionHeader = setCookie.find((c) => c.includes("JSESSIONID"));
-    if (!jsessionHeader) {
-      console.log("⚠️ JSESSIONID NOT FOUND IN HEADERS");
-      throw new Error("JSESSIONID_NOT_FOUND_IN_HEADERS");
-    }
+    if (!jsessionHeader) throw new Error("JSESSIONID_NOT_FOUND");
 
     const jsessionValue = jsessionHeader.split("JSESSIONID=")[1]?.split(";")[0];
-    if (!jsessionValue) {
-      throw new Error("INVALID_JSESSIONID_VALUE");
-    }
-
-    // ✅ NEW COOKIE READY
-    NEW_COOKIE = `JSESSIONID=${jsessionValue}`;
-
-    // 🔥 Only replace global cookie now
-    GLOBAL_COOKIE = NEW_COOKIE;
-
+    
+    // ✅ SAVE GLOBALLY AND TO DB
+    GLOBAL_COOKIE = `JSESSIONID=${jsessionValue}`;
     await SystemConfig.findOneAndUpdate(
       { key: "COOKIE" },
-      { value: { value: jsessionValue } },
-      { upsert: true, returnDocument: 'after' }
+      { 
+          value: { value: jsessionValue },
+          updatedAt: new Date() 
+      },
+      { upsert: true }
     );
 
     console.log("✅ COOKIE UPDATED SAFELY");
