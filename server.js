@@ -62,13 +62,13 @@ app.use(cors()); // Allow Cross-Origin Requests
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate Limiting (Prevent Abuse)
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Limit each IP to 300 requests per windowMs
-  message: "Too many requests from this IP, please try again after 15 minutes."
-});
-app.use(limiter);
+// Rate Limiting (Prevent Abuse) - DISABLED per user request for unlimited access
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: 300, // Limit each IP to 300 requests per windowMs
+//   message: "Too many requests from this IP, please try again after 15 minutes."
+// });
+// app.use(limiter);
 // ========================================================
 
 app.get("/", (req, res) => res.send("GLIVE SERVER IS RUNNING"));
