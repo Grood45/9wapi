@@ -36,6 +36,24 @@ async function fetchGmanEventsBySport(sportId) {
 }
 
 /**
+ * 🚀 High-Speed Match Details Fetcher
+ * Marks match as "Active" for high-velocity background sync.
+ */
+async function fetchGmanMatchDetails(matchId) {
+    const mId = matchId.toString();
+    
+    // Mark as active and update last requested timestamp
+    gmanActiveMatches.add(mId);
+    if (!gmanMatchDetailsCache.has(mId)) {
+        gmanMatchDetailsCache.set(mId, { data: null, lastRequested: Date.now() });
+    } else {
+        gmanMatchDetailsCache.get(mId).lastRequested = Date.now();
+    }
+
+    return gmanMatchDetailsCache.get(mId)?.data;
+}
+
+/**
  * 🔄 Background Worker: Inplay Sync
  */
 async function syncGmanInplayToMemory() {
