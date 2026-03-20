@@ -14,6 +14,13 @@ const gmanSportEventsCache = new Map(); // Key: sportId, Value: data
 const gmanMatchDetailsCache = new Map(); // Key: matchId, Value: { data, lastRequested }
 const gmanActiveMatches = new Set(); // Currently tracked for background polling
 
+const GMAN_HEADERS = {
+    "Accept": "application/json, text/plain, */*",
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Origin": "https://www.gamewinbuzz.com",
+    "Referer": "https://www.gamewinbuzz.com/"
+};
+
 /**
  * 🚀 High-Speed Inplay Data Fetcher
  */
@@ -59,12 +66,7 @@ async function fetchGmanMatchDetails(matchId) {
 async function syncGmanInplayToMemory() {
     try {
         const res = await axios.get(BASE_URL_INPLAY, {
-            headers: {
-                "Accept": "application/json, text/plain, */*",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Origin": "https://www.gamewinbuzz.com",
-                "Referer": "https://www.gamewinbuzz.com/"
-            },
+            headers: GMAN_HEADERS,
             timeout: 5000
         });
 
@@ -82,10 +84,7 @@ async function syncGmanInplayToMemory() {
 async function syncGmanSportsToMemory() {
     try {
         const res = await axios.get(BASE_URL_SPORTS, {
-            headers: {
-                "Accept": "application/json, text/plain, */*",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            },
+            headers: GMAN_HEADERS,
             timeout: 8000
         });
 
@@ -104,10 +103,7 @@ async function syncGmanEventsBySportToMemory(sportId) {
     try {
         const url = `${BASE_URL_EVENTS}/${sportId}`;
         const res = await axios.get(url, {
-            headers: {
-                "Accept": "application/json, text/plain, */*",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            },
+            headers: GMAN_HEADERS,
             timeout: 8000
         });
 
@@ -126,10 +122,7 @@ async function syncGmanMatchDetailToMemory(matchId) {
     try {
         const url = `${BASE_URL_DETAILS}/${matchId}`;
         const res = await axios.get(url, {
-            headers: {
-                "Accept": "application/json, text/plain, */*",
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            },
+            headers: GMAN_HEADERS,
             timeout: 5000
         });
 
