@@ -263,6 +263,10 @@ const connectDB = require("./config/db");
     const { startKingSync } = require("./cron/kingexchange/kingSync.cron");
     startKingSync();
 
+    // 5️⃣ Gman Specialist-Level Sync (Ultra-Fast RAM Poll)
+    const { startGmanBackgroundWorker } = require("./cron/gman/gmanInplay.cron");
+    startGmanBackgroundWorker();
+
     console.log("✅ SYSTEM READY: TOKEN & COOKIE SET");
   } catch (e) {
     console.log("❌ WARMUP FAILED:", e.message);
