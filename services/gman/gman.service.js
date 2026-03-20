@@ -1,18 +1,31 @@
 const axios = require("axios");
+const http = require('http');
+const https = require('https');
+
+// ⚡ 20-Year Specialist Strategy: Connection Pooling
+// Reuse TCP connections to save handshakes and improve performance.
+const gmanClient = axios.create({
+    httpAgent: new http.Agent({ keepAlive: true, maxSockets: 10 }),
+    httpsAgent: new https.Agent({ keepAlive: true, maxSockets: 10 }),
+    timeout: 8000
+});
 
 const BASE_URL_INPLAY = "https://central.zplay1.in/pb/api/v1/events/matches/inplay";
 const BASE_URL_SPORTS = "https://zplay1.in/sports/api/v1/sports/management/getSport";
-const BASE_URL_EVENTS = "https://zplay1.in/pb/api/v1/events/matches"; // Will append /:sportId
-const BASE_URL_DETAILS = "https://zplay1.in/pb/api/v1/events/matchDetails"; // Will append /:matchId
+const BASE_URL_EVENTS = "https://zplay1.in/pb/api/v1/events/matches"; 
+const BASE_URL_DETAILS = "https://zplay1.in/pb/api/v1/events/matchDetails"; 
 
 /**
- * ⚡ 20-Year Specialist Strategy: RAM-Matrix Architecture.
+ * ⚡ Specialist Cache & State
  */
 let gmanInplayCache = null;
 let gmanSportsCache = null;
-const gmanSportEventsCache = new Map(); // Key: sportId, Value: data
-const gmanMatchDetailsCache = new Map(); // Key: matchId, Value: { data, lastRequested }
-const gmanActiveMatches = new Set(); // Currently tracked for background polling
+const gmanSportEventsCache = new Map();
+const gmanMatchDetailsCache = new Map();
+const gmanActiveMatches = new Set();
+const MAX_TRACKED_MATCHES = 100; // ⚡ Specialist RAM Management: Prevent memory bloat
+const gmanCircuitOpen = { state: false, until: 0 }; 
+const gmanSyncInFlight = new Set(); 
 
 const GMAN_HEADERS = {
     "Accept": "application/json, text/plain, */*",
@@ -50,6 +63,12 @@ async function fetchGmanMatchDetails(matchId) {
     const mId = matchId.toString();
     
     // Mark as active and update last requested timestamp
+    if (!gmanActiveMatches.has(mId) && gmanActiveMatches.size >= MAX_TRACKED_MATCHES) {
+        // Drop oldest match from tracker if full to save RAM
+        const firstMatch = gmanActiveMatches.values().next().value;
+        gmanActiveMatches.delete(firstMatch);
+    }
+
     gmanActiveMatches.add(mId);
     if (!gmanMatchDetailsCache.has(mId)) {
         gmanMatchDetailsCache.set(mId, { data: null, lastRequested: Date.now() });
@@ -63,77 +82,63 @@ async function fetchGmanMatchDetails(matchId) {
 /**
  * 🔄 Background Worker: Inplay Sync
  */
+/**
+ * 🔄 Background Worker: Universal Tracker
+ */
+async function syncGmanData(url, targetCache, key = null) {
+    // 1️⃣ Circuit Breaker Check
+    if (gmanCircuitOpen.state && Date.now() < gmanCircuitOpen.until) return false;
+    if (gmanCircuitOpen.state) gmanCircuitOpen.state = false;
+
+    // 2️⃣ Concurrency Lock
+    const lockId = key || url;
+    if (gmanSyncInFlight.has(lockId)) return false;
+    gmanSyncInFlight.add(lockId);
+
+    try {
+        const res = await gmanClient.get(url, { headers: GMAN_HEADERS });
+        if (res.data) {
+            if (key) {
+                const entry = targetCache.get(key) || { lastRequested: Date.now() };
+                entry.data = res.data;
+                targetCache.set(key, entry);
+            } else {
+                // Root cache update
+                if (url === BASE_URL_INPLAY) gmanInplayCache = res.data;
+                if (url === BASE_URL_SPORTS) gmanSportsCache = res.data;
+            }
+            return true;
+        }
+    } catch (e) {
+        // 3️⃣ Trip Circuit on 429 (Rate Limit) or 503 (Server Overload)
+        if (e.response?.status === 429 || e.response?.status === 503) {
+            gmanCircuitOpen.state = true;
+            gmanCircuitOpen.until = Date.now() + 60000; // Cool off for 1 minute
+        }
+    } finally {
+        gmanSyncInFlight.delete(lockId);
+    }
+    return false;
+}
+
 async function syncGmanInplayToMemory() {
-    try {
-        const res = await axios.get(BASE_URL_INPLAY, {
-            headers: GMAN_HEADERS,
-            timeout: 5000
-        });
-
-        if (res.data) {
-            gmanInplayCache = res.data;
-            return true;
-        }
-    } catch (e) {}
-    return false;
+    return syncGmanData(BASE_URL_INPLAY);
 }
 
-/**
- * 🔄 Background Worker: Sports Sync
- */
 async function syncGmanSportsToMemory() {
-    try {
-        const res = await axios.get(BASE_URL_SPORTS, {
-            headers: GMAN_HEADERS,
-            timeout: 8000
-        });
-
-        if (res.data) {
-            gmanSportsCache = res.data;
-            return true;
-        }
-    } catch (e) {}
-    return false;
+    return syncGmanData(BASE_URL_SPORTS);
 }
 
-/**
- * 🔄 Background Worker: Sport-wise Events Sync
- */
 async function syncGmanEventsBySportToMemory(sportId) {
-    try {
-        const url = `${BASE_URL_EVENTS}/${sportId}`;
-        const res = await axios.get(url, {
-            headers: GMAN_HEADERS,
-            timeout: 8000
-        });
-
-        if (res.data) {
-            gmanSportEventsCache.set(sportId.toString(), res.data);
-            return true;
-        }
-    } catch (e) {}
-    return false;
+    const sId = sportId.toString();
+    const url = `${BASE_URL_EVENTS}/${sId}`;
+    return syncGmanData(url, gmanSportEventsCache, sId);
 }
 
-/**
- * 🔄 Background Worker: Match Details Sync
- */
 async function syncGmanMatchDetailToMemory(matchId) {
-    try {
-        const url = `${BASE_URL_DETAILS}/${matchId}`;
-        const res = await axios.get(url, {
-            headers: GMAN_HEADERS,
-            timeout: 5000
-        });
-
-        if (res.data) {
-            const entry = gmanMatchDetailsCache.get(matchId.toString()) || { lastRequested: Date.now() };
-            entry.data = res.data;
-            gmanMatchDetailsCache.set(matchId.toString(), entry);
-            return true;
-        }
-    } catch (e) {}
-    return false;
+    const mId = matchId.toString();
+    const url = `${BASE_URL_DETAILS}/${mId}`;
+    return syncGmanData(url, gmanMatchDetailsCache, mId);
 }
 
 /**
