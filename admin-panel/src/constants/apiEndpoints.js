@@ -31,5 +31,8 @@ export const PROVIDER_ENDPOINTS = {
         { id: '/api/v1/kx/sports', pathTemplate: '/api/v1/kx/sports', label: 'KX: Sports List (Static Cache)', description: 'Returns the cached KingExchange sports list with ultra-low latency.' },
         { id: '/api/v1/kx/events', pathTemplate: '/api/v1/kx/events', label: 'KX: All Events List', description: 'Real-time list of all KingExchange events grouped by sport.' },
         { id: '/api/v1/kx/results', pathTemplate: '/api/v1/kx/results/:eventId', label: 'KX: Market Results (:eventId)', description: 'High-speed market results for a specific event ID.' }
+    ],
+    'Gman': [
+        { id: '/api/v1/events/gman/inplay', pathTemplate: '/api/v1/events/gman/inplay', label: 'Gman: In-Play Events', description: 'Proxies live in-play event data from the Gman provider with 1-second caching.' }
     ]
 };
