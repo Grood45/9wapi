@@ -1,4 +1,9 @@
-const { fetchGmanInplay } = require("../../services/gman/gman.service");
+const { 
+    fetchGmanInplay, 
+    fetchGmanSports, 
+    fetchGmanEventsBySport, 
+    fetchGmanMatchDetails 
+} = require("../../services/gman/gman.service");
 
 /**
  * REST Handler for fetching Gman in-play events.
@@ -24,7 +29,6 @@ async function getGmanSportsHandler(req, res) {
         return res.status(500).json({ success: false, message: "Failed to fetch sports list from Gman provider." });
     }
 
-    // Return exact provider response payload structure to match original
     return res.status(200).json(data);
 }
 
@@ -44,12 +48,14 @@ async function getGmanEventsBySportHandler(req, res) {
         return res.status(404).json({ success: false, message: `No data found for Sport ID: ${sportId}` });
     }
 
+    return res.status(200).json(data);
+}
+
 /**
  * REST Handler for fetching Gman match details (Odds).
  * Activates on-demand background polling for this match.
  */
 async function getGmanMatchDetailsHandler(req, res) {
-    const { fetchGmanMatchDetails } = require("../../services/gman/gman.service");
     const { matchId } = req.params;
 
     if (!matchId) {
