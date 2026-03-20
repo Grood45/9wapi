@@ -1,19 +1,65 @@
-const { syncGmanInplayToMemory } = require("../../services/gman/gman.service");
+const { 
+    syncGmanInplayToMemory, 
+    syncGmanSportsToMemory, 
+    syncGmanEventsBySportToMemory, 
+    fetchGmanSports,
+    syncGmanMatchDetailToMemory,
+    cleanupGmanActiveMatches,
+    gmanActiveMatches
+} = require("../../services/gman/gman.service");
 
 /**
- * ⚡ 20-Year Specialist Worker: High-Velocity Gman Syncer.
- * Runs every 2 seconds to keep the RAM cache fresh for 0ms API responses.
+ * ⚡ Discovery & Polling System
  */
-async function startGmanBackgroundWorker() {
-    // console.log("🚀 GMAN WORKER: INITIALIZING...");
-    
-    // Initial Warmup
-    await syncGmanInplayToMemory();
+async function pollAllGmanSports() {
+    const sportsData = await fetchGmanSports();
+    if (sportsData && sportsData.data && Array.isArray(sportsData.data.sports)) {
+        for (const sport of sportsData.data.sports) {
+            if (sport.id) {
+                await syncGmanEventsBySportToMemory(sport.id);
+                await new Promise(resolve => setTimeout(resolve, 200)); 
+            }
+        }
+    }
+}
 
-    // High-Velocity Interval Polling (Faster and more reliable than Cron for < 10s intervals)
+/**
+ * ⚡ Real-Time Odds Polling (On-Demand Only)
+ */
+async function pollActiveGmanMatchDetails() {
+    // Only poll matches that clients are currently viewing
+    for (const matchId of gmanActiveMatches) {
+        await syncGmanMatchDetailToMemory(matchId);
+        await new Promise(resolve => setTimeout(resolve, 100)); // Be gentle
+    }
+}
+
+async function startGmanBackgroundWorker() {
+    await syncGmanSportsToMemory();
+    
+    await Promise.all([
+        syncGmanInplayToMemory(),
+        pollAllGmanSports()
+    ]);
+
+    // 🚀 High-Velocity Odds Pulse: Every 2 Seconds
     setInterval(async () => {
-        await syncGmanInplayToMemory();
-    }, 2000); // 2 Seconds Pulse (Ultra-Fast)
+        await pollActiveGmanMatchDetails();
+    }, 2000);
+
+    // 🚀 Inplay & Dynamic Match Loop: 10 Seconds Pulse
+    setInterval(async () => {
+        await Promise.all([
+            syncGmanInplayToMemory(),
+            pollAllGmanSports()
+        ]);
+        cleanupGmanActiveMatches(); // Maintenance
+    }, 10000); 
+
+    // 🔄 Sports Discovery Loop: Once a week
+    setInterval(async () => {
+        await syncGmanSportsToMemory();
+    }, 7 * 24 * 60 * 60 * 1000); 
 }
 
 module.exports = {

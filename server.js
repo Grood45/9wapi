@@ -136,8 +136,11 @@ app.get("/api/v1/kx/sports", apiAccessGuard('KingExchange', '/api/v1/kx/sports')
 app.get("/api/v1/kx/events", apiAccessGuard('KingExchange', '/api/v1/kx/events'), getKingEventsHandler); // ⚡ New High-Speed All Events
 app.get("/api/v1/kx/results/:eventId", apiAccessGuard('KingExchange', '/api/v1/kx/results'), getKingResultsHandler); // ⚡ New High-Speed Market Results
 
-const { getGmanInplayHandler } = require("./controllers/gman/gman.controller");
+const { getGmanInplayHandler, getGmanSportsHandler, getGmanEventsBySportHandler, getGmanMatchDetailsHandler } = require("./controllers/gman/gman.controller");
 app.get("/api/v1/events/gman/inplay", apiAccessGuard('Gman', '/api/v1/events/gman/inplay'), getGmanInplayHandler); // ⚡ Gman In-Play Proxy (Gman Provider)
+app.get("/api/v1/events/gman/sports", apiAccessGuard('Gman', '/api/v1/events/gman/sports'), getGmanSportsHandler); // ⚡ Gman Sports List Proxy (Gman Provider)
+app.get("/api/v1/events/gman/list/:sportId", apiAccessGuard('Gman', '/api/v1/events/gman/list'), getGmanEventsBySportHandler); // ⚡ Gman Sport-wise List Proxy (Gman Provider)
+app.get("/api/v1/events/gman/details/:matchId", apiAccessGuard('Gman', '/api/v1/events/gman/details'), getGmanMatchDetailsHandler); // ⚡ Gman Match Details (Odds) Proxy
 
 app.get("/test-socket", (req, res) => {
   res.sendFile(__dirname + "/test_socket.html");

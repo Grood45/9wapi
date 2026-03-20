@@ -72,7 +72,10 @@ These APIs proxy live in-play event data from the Gman provider.
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| **GET** | `/api/v1/events/gman/inplay` | Fetches live in-play matches from Gman with 1-second in-memory caching. |
+| **GET** | `/api/v1/events/gman/inplay` | Fetches live in-play matches from Gman with 10-second in-memory caching. |
+| **GET** | `/api/v1/events/gman/sports` | Fetches the complete sports list from Gman using high-performance RAM caching. |
+| **GET** | `/api/v1/events/gman/list/:sportId` | Dynamic list of events filtered by Sport ID (e.g., 4 = Cricket). |
+| **GET** | `/api/v1/events/gman/details/:matchId` | Real-time match details and odds using 2-second On-Demand Polling. |
 
 ---
 

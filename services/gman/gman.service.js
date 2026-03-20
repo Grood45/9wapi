@@ -1,53 +1,153 @@
 const axios = require("axios");
 
-const BASE_URL = "https://central.zplay1.in/pb/api/v1/events/matches/inplay";
+const BASE_URL_INPLAY = "https://central.zplay1.in/pb/api/v1/events/matches/inplay";
+const BASE_URL_SPORTS = "https://zplay1.in/sports/api/v1/sports/management/getSport";
+const BASE_URL_EVENTS = "https://zplay1.in/pb/api/v1/events/matches"; // Will append /:sportId
+const BASE_URL_DETAILS = "https://zplay1.in/pb/api/v1/events/matchDetails"; // Will append /:matchId
 
 /**
- * ⚡ 20-Year Specialist Strategy: Zero-Latency In-Memory Inplay Data.
- * The API endpoint returns data instantly from RAM (0ms latency).
- * The RAM is kept fresh by a high-velocity background worker (Cron).
+ * ⚡ 20-Year Specialist Strategy: RAM-Matrix Architecture.
  */
-let gmanMemoryCache = null;
+let gmanInplayCache = null;
+let gmanSportsCache = null;
+const gmanSportEventsCache = new Map(); // Key: sportId, Value: data
+const gmanMatchDetailsCache = new Map(); // Key: matchId, Value: { data, lastRequested }
+const gmanActiveMatches = new Set(); // Currently tracked for background polling
 
 /**
- * 🚀 High-Speed Memory Data Fetcher
- * Used by the REST Controller to serve data with 0ms delay.
+ * 🚀 High-Speed Inplay Data Fetcher
  */
 async function fetchGmanInplay() {
-    // Return last known good data from RAM immediately
-    return gmanMemoryCache;
+    return gmanInplayCache;
 }
 
 /**
- * 🔄 Background Worker Function
- * Periodically called by Cron to sync with the external Gman API.
+ * 🚀 High-Speed Sports Data Fetcher
+ */
+async function fetchGmanSports() {
+    return gmanSportsCache;
+}
+
+/**
+ * 🚀 High-Speed Sport-wise Events Fetcher
+ */
+async function fetchGmanEventsBySport(sportId) {
+    return gmanSportEventsCache.get(sportId.toString());
+}
+
+/**
+ * 🔄 Background Worker: Inplay Sync
  */
 async function syncGmanInplayToMemory() {
     try {
-        const res = await axios.get(BASE_URL, {
+        const res = await axios.get(BASE_URL_INPLAY, {
             headers: {
                 "Accept": "application/json, text/plain, */*",
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
                 "Origin": "https://www.gamewinbuzz.com",
                 "Referer": "https://www.gamewinbuzz.com/"
             },
-            timeout: 5000 // Tight timeout for high responsiveness
+            timeout: 5000
         });
 
         if (res.data) {
-            // Update memory cache instantly
-            gmanMemoryCache = res.data;
-            // console.log(`✅ GMAN SYNC: Memory updated at ${new Date().toLocaleTimeString()}`);
+            gmanInplayCache = res.data;
             return true;
         }
-    } catch (e) {
-        // Silently fail but log if needed; keep serving old data for resilience
-        // console.log(`❌ GMAN SYNC ERROR:`, e.message);
-    }
+    } catch (e) {}
     return false;
+}
+
+/**
+ * 🔄 Background Worker: Sports Sync
+ */
+async function syncGmanSportsToMemory() {
+    try {
+        const res = await axios.get(BASE_URL_SPORTS, {
+            headers: {
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            },
+            timeout: 8000
+        });
+
+        if (res.data) {
+            gmanSportsCache = res.data;
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
+/**
+ * 🔄 Background Worker: Sport-wise Events Sync
+ */
+async function syncGmanEventsBySportToMemory(sportId) {
+    try {
+        const url = `${BASE_URL_EVENTS}/${sportId}`;
+        const res = await axios.get(url, {
+            headers: {
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            },
+            timeout: 8000
+        });
+
+        if (res.data) {
+            gmanSportEventsCache.set(sportId.toString(), res.data);
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
+/**
+ * 🔄 Background Worker: Match Details Sync
+ */
+async function syncGmanMatchDetailToMemory(matchId) {
+    try {
+        const url = `${BASE_URL_DETAILS}/${matchId}`;
+        const res = await axios.get(url, {
+            headers: {
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            },
+            timeout: 5000
+        });
+
+        if (res.data) {
+            const entry = gmanMatchDetailsCache.get(matchId.toString()) || { lastRequested: Date.now() };
+            entry.data = res.data;
+            gmanMatchDetailsCache.set(matchId.toString(), entry);
+            return true;
+        }
+    } catch (e) {}
+    return false;
+}
+
+/**
+ * 🛠️ Maintenance: Clean up inactive matches
+ */
+function cleanupGmanActiveMatches() {
+    const now = Date.now();
+    for (const matchId of gmanActiveMatches) {
+        const entry = gmanMatchDetailsCache.get(matchId);
+        if (!entry || (now - entry.lastRequested > 60000)) { // 60 seconds inactivity
+            gmanActiveMatches.delete(matchId);
+            // gmanMatchDetailsCache.delete(matchId); // Optional: Keep data in RAM or purge
+        }
+    }
 }
 
 module.exports = {
     fetchGmanInplay,
-    syncGmanInplayToMemory
+    fetchGmanSports,
+    fetchGmanEventsBySport,
+    fetchGmanMatchDetails,
+    syncGmanInplayToMemory,
+    syncGmanSportsToMemory,
+    syncGmanEventsBySportToMemory,
+    syncGmanMatchDetailToMemory,
+    cleanupGmanActiveMatches,
+    gmanActiveMatches
 };

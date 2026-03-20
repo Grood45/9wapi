@@ -33,6 +33,9 @@ export const PROVIDER_ENDPOINTS = {
         { id: '/api/v1/kx/results', pathTemplate: '/api/v1/kx/results/:eventId', label: 'KX: Market Results (:eventId)', description: 'High-speed market results for a specific event ID.' }
     ],
     'Gman': [
-        { id: '/api/v1/events/gman/inplay', pathTemplate: '/api/v1/events/gman/inplay', label: 'Gman: In-Play Events', description: 'Proxies live in-play event data from the Gman provider with 1-second caching.' }
+        { id: '/api/v1/events/gman/inplay', pathTemplate: '/api/v1/events/gman/inplay', label: 'Gman: In-Play Events', description: 'Proxies live in-play event data from the Gman provider with 10-second caching.' },
+        { id: '/api/v1/events/gman/sports', pathTemplate: '/api/v1/events/gman/sports', label: 'Gman: Sports List', description: 'Proxies the complete sports list from the Gman provider with background RAM caching.' },
+        { id: '/api/v1/events/gman/list', pathTemplate: '/api/v1/events/gman/list/:sportId', label: 'Gman: Sport-wise List (:sportId)', description: 'Fetches matches for a specific Sport ID (e.g. 4 for Cricket) with zero-latency discovery-based RAM caching.' },
+        { id: '/api/v1/events/gman/details', pathTemplate: '/api/v1/events/gman/details/:matchId', label: 'Gman: Match Details (Odds)', description: 'Real-time Match Odds, Bookmaker, and Fancy markets. Uses Specialist-Level On-Demand Polling (2s refreshing) for extreme performance.' }
     ]
 };
