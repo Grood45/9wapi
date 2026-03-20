@@ -136,6 +136,9 @@ app.get("/api/v1/kx/sports", apiAccessGuard('KingExchange', '/api/v1/kx/sports')
 app.get("/api/v1/kx/events", apiAccessGuard('KingExchange', '/api/v1/kx/events'), getKingEventsHandler); // ⚡ New High-Speed All Events
 app.get("/api/v1/kx/results/:eventId", apiAccessGuard('KingExchange', '/api/v1/kx/results'), getKingResultsHandler); // ⚡ New High-Speed Market Results
 
+const { getGmanInplayHandler } = require("./controllers/gman/gman.controller");
+app.get("/api/v1/events/gman/inplay", apiAccessGuard('Gman', '/api/v1/events/gman/inplay'), getGmanInplayHandler); // ⚡ Gman In-Play Proxy (Gman Provider)
+
 app.get("/test-socket", (req, res) => {
   res.sendFile(__dirname + "/test_socket.html");
 });

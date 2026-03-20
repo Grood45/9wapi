@@ -67,6 +67,15 @@ These APIs pull static and live data from the KingExchange provider.
 
 ---
 
+## 🔹 6. Gman APIs (In-Play Proxy)
+These APIs proxy live in-play event data from the Gman provider.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **GET** | `/api/v1/events/gman/inplay` | Fetches live in-play matches from Gman with 1-second in-memory caching. |
+
+---
+
 ## 🔹 6. Internal & Debug APIs
 Utility endpoints used for system health checks, testing, and debugging.
 
