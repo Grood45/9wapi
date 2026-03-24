@@ -1,4 +1,5 @@
 const { fetchDiamondStream } = require("../../services/d247/diamondtv.service");
+const ClientAccess = require("../../models/ClientAccess");
 
 /**
  * ⚡ 20-Year Exp Performance Strategy:
@@ -38,6 +39,43 @@ async function renderDiamondEmbed(req, res) {
         }
 
         const { streamingUrl } = streamData;
+
+        // 🛡️ Domain Verification Logic
+        const referer = req.get('Referer') || req.get('Origin') || "";
+        let domainAuthorized = false;
+
+        if (referer) {
+            try {
+                // Extract domain from Referer (e.g., https://9x.live/match -> 9x.live)
+                const urlObj = new URL(referer);
+                const requestDomain = urlObj.hostname;
+
+                // Find an active D247 access config for this domain
+                const access = await ClientAccess.findOne({
+                    providerName: 'D247',
+                    status: 'active',
+                    domains: requestDomain,
+                    validUntil: { $gt: new Date() }
+                });
+
+                if (access) {
+                    domainAuthorized = true;
+                    console.log(`✅ [AUTH_SUCCESS] Domain authorized: ${requestDomain}`);
+                } else {
+                    console.warn(`🚫 [AUTH_FAIL] Domain NOT whitelisted: ${requestDomain}`);
+                }
+            } catch (err) {
+                console.error(`❌ [AUTH_ERROR] Invalid Referer URL: ${referer}`);
+            }
+        } else {
+            console.warn(`🚫 [AUTH_FAIL] No Referer found in request`);
+        }
+
+        // ⚠️ Skip authorization for local testing or if you want to allow direct access for now
+        // For production, this should be strictly 'if (!domainAuthorized)'
+        if (!domainAuthorized && process.env.NODE_ENV === 'production') {
+            return res.status(403).send("<h1>Unauthorized Domain. Please contact administrator.</h1>");
+        }
 
         // 🚀 Premium Iframe Wrapper with Smart Masking (To hide provider-side 'Loading' text)
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

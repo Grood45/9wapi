@@ -17,6 +17,8 @@ export default function AccessControl() {
     const [validUntil, setValidUntil] = useState('');
     const [whitelistedIPs, setWhitelistedIPs] = useState([]);
     const [ipInput, setIpInput] = useState('');
+    const [domains, setDomains] = useState([]);
+    const [domainInput, setDomainInput] = useState('');
     const [activeProviders, setActiveProviders] = useState({}); // { 'SkyExchange': { enabled: true, endpoints: [] } }
 
     useEffect(() => { fetchData(); }, []);
@@ -48,6 +50,7 @@ export default function AccessControl() {
             setValidFrom(new Date(firstRule.validFrom).toISOString().slice(0, 16));
             setValidUntil(new Date(firstRule.validUntil).toISOString().slice(0, 16));
             setWhitelistedIPs(firstRule.whitelistedIPs || []);
+            setDomains(firstRule.domains || []);
             
             const providersMap = {};
             clientGroup.rules.forEach(r => {
@@ -59,6 +62,7 @@ export default function AccessControl() {
             setValidFrom(now.toISOString().slice(0, 16));
             setValidUntil(nextMonth.toISOString().slice(0, 16));
             setWhitelistedIPs([]);
+            setDomains([]);
             setActiveProviders({});
         }
         setShowModal(true);
@@ -76,6 +80,7 @@ export default function AccessControl() {
                         validFrom,
                         validUntil,
                         whitelistedIPs,
+                        domains,
                         status: 'active'
                     }))
             };
@@ -112,6 +117,13 @@ export default function AccessControl() {
         if (ipInput.trim() && !whitelistedIPs.includes(ipInput.trim())) {
             setWhitelistedIPs([...whitelistedIPs, ipInput.trim()]);
             setIpInput('');
+        }
+    };
+
+    const addDomain = () => {
+        if (domainInput.trim() && !domains.includes(domainInput.trim())) {
+            setDomains([...domains, domainInput.trim()]);
+            setDomainInput('');
         }
     };
 
@@ -221,17 +233,16 @@ export default function AccessControl() {
                         </div>
 
                         {/* IP Whitelist */}
-                        <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-700">
+                        <div className="bg-slate-900/80 p-4 rounded-xl border border-slate-700 mb-4">
                             <div className="flex items-center gap-2 text-emerald-400 mb-3">
                                 <HiOutlineLightningBolt className="w-4 h-4" />
                                 <span className="font-bold text-xs uppercase tracking-wider">IP Security Whitelist</span>
                             </div>
                             <div className="flex gap-2 mb-3">
-                                <input className="input-field text-xs py-2" value={ipInput} onChange={e => setIpInput(e.target.value)} placeholder="Enter IP address (e.g. 103.x.x.x)" onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addIp())} />
-                                <button type="button" onClick={addIp} className="btn-secondary text-xs px-4">Add</button>
+                                <input className="input-field text-xs py-2" value={ipInput} onChange={e => setIpInput(e.target.value)} placeholder="Enter IP (e.g. 104.21.x.x)" onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addIp())} />
+                                <button type="button" onClick={addIp} className="btn-secondary text-xs px-4">Add IP</button>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                {whitelistedIPs.length === 0 && <span className="text-slate-500 text-xs italic">No IPs added. Using Public access if 0.0.0.0 is present.</span>}
                                 {whitelistedIPs.map(ip => (
                                     <span key={ip} className="bg-brand-accent/20 border border-brand-accent/30 px-2 py-1 rounded text-[10px] text-white flex items-center gap-1 group">
                                         {ip}
@@ -239,6 +250,29 @@ export default function AccessControl() {
                                     </span>
                                 ))}
                             </div>
+                        </div>
+
+                        {/* Domain Whitelist */}
+                        <div className="bg-slate-900/80 p-4 rounded-xl border border-blue-500/30">
+                            <div className="flex items-center gap-2 text-blue-400 mb-3">
+                                <HiGlobeAlt className="w-4 h-4" />
+                                <span className="font-bold text-xs uppercase tracking-wider">Domain Whitelist [FOR STREAMING]</span>
+                            </div>
+                            <div className="flex gap-2 mb-3">
+                                <input className="input-field text-xs py-2" value={domainInput} onChange={e => setDomainInput(e.target.value)} placeholder="Enter Domain (e.g. 9x.live)" onKeyPress={e => e.key === 'Enter' && (e.preventDefault(), addDomain())} />
+                                <button type="button" onClick={addDomain} className="btn-secondary text-xs px-4 text-blue-400 border-blue-500/20">Add </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {domains.map(d => (
+                                    <span key={d} className="bg-blue-500/20 border border-blue-500/30 px-2 py-1 rounded text-[10px] text-white flex items-center gap-1 group">
+                                        {d}
+                                        <button type="button" onClick={() => setDomains(domains.filter(i => i !== d))} className="text-slate-400 hover:text-red-400 transition-colors">✕</button>
+                                    </span>
+                                ))}
+                            </div>
+                            {activeProviders['D247']?.enabled && domains.length === 0 && (
+                                <p className="text-[10px] text-amber-400 mt-2 italic font-bold">⚠️ DiamondTV is active. At least one domain is recommended for streaming.</p>
+                            )}
                         </div>
 
                         <div className="flex gap-3 justify-end mt-8 pt-4 border-t border-slate-700">
