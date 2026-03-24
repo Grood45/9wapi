@@ -38,23 +38,37 @@ const apiAccessGuard = (providerName, endpointName = 'ALL') => {
             // 3. Normalize localhost
             if (clientIp === '::1' || clientIp === 'localhost') clientIp = '127.0.0.1';
 
-            // 1. Identify Client Access by IP and Provider
-            // We no longer require a clientId header/query. We search for ANY active rule that allows this IP for this provider.
+            // 🛡️ HYBRID SECURITY: Identify Client Access by IP OR Domain (Referer)
+            const referer = req.get('Referer') || req.get('Origin') || "";
+            let requestDomain = "";
+            if (referer) {
+                try {
+                    const urlObj = new URL(referer);
+                    requestDomain = urlObj.hostname;
+                } catch (e) {
+                    console.warn(`⚠️ [GUARD_WARN] Malformed Referer: ${referer}`);
+                }
+            }
+
+            // Search for ANY active rule that allows this IP OR this Domain for this provider.
             const accessConfig = await ClientAccess.findOne({
                 providerName: providerName,
                 status: 'active',
                 $or: [
                     { whitelistedIPs: clientIp },
-                    { whitelistedIPs: '0.0.0.0' }
+                    { whitelistedIPs: '0.0.0.0' },
+                    { domains: requestDomain } // 👈 Allow access if Domain matches (Bypass IP for users)
                 ]
             });
 
             if (!accessConfig) {
-                console.log(`🚫 [ACCESS_DENIED] IP: ${clientIp}, Provider: ${providerName}, Endpoint: ${endpointName}`);
-                return sendErrorPhoneResponse(res, `Your IP ${clientIp} is not whitelisted for ${providerName}.`, clientIp);
+                const logData = requestDomain ? `Domain: ${requestDomain}` : `IP: ${clientIp}`;
+                console.log(`🚫 [ACCESS_DENIED] ${logData}, Provider: ${providerName}, Endpoint: ${endpointName}`);
+                return sendErrorPhoneResponse(res, `Access Denied for ${logData}. Please ensure your domain/IP is whitelisted.`, clientIp);
             }
 
-            console.log(`✅ [ACCESS_GRANTED] IP: ${clientIp}, Provider: ${providerName}, Endpoint: ${endpointName}`);
+            const logSuccess = requestDomain ? `Domain: ${requestDomain}` : `IP: ${clientIp}`;
+            console.log(`✅ [ACCESS_GRANTED] ${logSuccess}, Provider: ${providerName}, Endpoint: ${endpointName}`);
 
             // 2. Verify Time (Date Restrictions)
             const currentTime = new Date();
