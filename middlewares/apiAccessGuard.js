@@ -43,8 +43,11 @@ const apiAccessGuard = (providerName, endpointName = 'ALL') => {
             });
 
             if (!accessConfig) {
+                console.log(`🚫 [ACCESS_DENIED] IP: ${clientIp}, Provider: ${providerName}, Endpoint: ${endpointName}`);
                 return sendErrorPhoneResponse(res, `Your IP ${clientIp} is not whitelisted for ${providerName}.`, clientIp);
             }
+
+            console.log(`✅ [ACCESS_GRANTED] IP: ${clientIp}, Provider: ${providerName}, Endpoint: ${endpointName}`);
 
             // 2. Verify Time (Date Restrictions)
             const currentTime = new Date();

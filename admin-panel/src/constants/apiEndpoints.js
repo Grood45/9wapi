@@ -37,5 +37,9 @@ export const PROVIDER_ENDPOINTS = {
         { id: '/api/v1/events/gman/sports', pathTemplate: '/api/v1/events/gman/sports', label: 'Gman: Sports List', description: 'Proxies the complete sports list from the Gman provider with background RAM caching.' },
         { id: '/api/v1/events/gman/list', pathTemplate: '/api/v1/events/gman/list/:sportId', label: 'Gman: Sport-wise List (:sportId)', description: 'Fetches matches for a specific Sport ID (e.g. 4 for Cricket) with zero-latency discovery-based RAM caching.' },
         { id: '/api/v1/events/gman/details', pathTemplate: '/api/v1/events/gman/details/:matchId', label: 'Gman: Match Details (Odds)', description: 'Real-time Match Odds, Bookmaker, and Fancy markets. Uses Specialist-Level On-Demand Polling (2s refreshing) for extreme performance.' }
+    ],
+    'D247': [
+        { id: '/api/v1/stream/diamondtv', pathTemplate: '/api/v1/stream/diamondtv/:eventId', label: 'DiamondTV: JSON API (Get Stream URL)', description: 'Fetches the clean proxy iframe URL for DiamondTV streaming.' },
+        { id: '/streming/diomondtv', pathTemplate: '/streming/diomondtv/:eventId', label: 'DiamondTV: Stream Playback (Iframe)', description: 'Renders the actual live stream player proxy.' }
     ]
 };

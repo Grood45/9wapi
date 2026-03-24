@@ -19,6 +19,7 @@ require("./cron/betfair/cleanupMarketResults.cron"); // NEW Betfair Market Resul
 
 const { gliveHandler } = require("./controllers/skyexchange/glive.controller");
 const { getEventStream } = require("./controllers/skyexchange/event.controller");
+const { getDiamondUrl, renderDiamondEmbed } = require("./controllers/d247/diamondtv.controller");
 const apiAccessGuard = require("./middlewares/apiAccessGuard");
 
 const app = express();
@@ -141,6 +142,10 @@ app.get("/api/v1/events/gman/inplay", apiAccessGuard('Gman', '/api/v1/events/gma
 app.get("/api/v1/events/gman/sports", apiAccessGuard('Gman', '/api/v1/events/gman/sports'), getGmanSportsHandler); // ⚡ Gman Sports List Proxy (Gman Provider)
 app.get("/api/v1/events/gman/list/:sportId", apiAccessGuard('Gman', '/api/v1/events/gman/list'), getGmanEventsBySportHandler); // ⚡ Gman Sport-wise List Proxy (Gman Provider)
 app.get("/api/v1/events/gman/details/:matchId", apiAccessGuard('Gman', '/api/v1/events/gman/details'), getGmanMatchDetailsHandler); // ⚡ Gman Match Details (Odds) Proxy
+
+// ================= DIAMOND TV (D247) =================
+app.get("/api/v1/stream/diamondtv/:eventId", apiAccessGuard('D247', '/api/v1/stream/diamondtv'), getDiamondUrl); // ⚡ DiamondTV JSON API (Return Clean URL)
+app.get("/streming/diomondtv/:eventId", apiAccessGuard('D247', '/streming/diomondtv'), renderDiamondEmbed); // ⚡ DiamondTV Proxy Iframe (Rendered HTML)
 
 app.get("/test-socket", (req, res) => {
   res.sendFile(__dirname + "/test_socket.html");

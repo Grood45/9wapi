@@ -3,7 +3,7 @@ import api from '../services/api';
 import { HiKey, HiClock, HiGlobeAlt, HiOutlineLightningBolt, HiCheckCircle, HiChevronDown, HiChevronUp, HiPlus, HiTrash } from 'react-icons/hi';
 import { PROVIDER_ENDPOINTS } from '../constants/apiEndpoints';
 
-const ALL_PROVIDERS = ['SkyExchange', 'KingExchange', 'Betfair', 'SportRadar', 'The100exch', 'Gman'];
+const ALL_PROVIDERS = ['SkyExchange', 'KingExchange', 'Betfair', 'SportRadar', 'The100exch', 'Gman', 'D247'];
 
 export default function AccessControl() {
     const [clients, setClients] = useState([]);
