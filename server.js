@@ -52,9 +52,12 @@ app.use(helmet({
       connectSrc: ["'self'", "ws:", "wss:", "https://cdn.jsdelivr.net", "https://*.skyinplay.com"],
       imgSrc: ["'self'", "data:", "https:"],
       mediaSrc: ["'self'", "blob:", "https:"],
-      frameSrc: ["'self'", "https:"]
+      frameSrc: ["'self'", "https:"],
+      frameAncestors: ["'self'", "*"] // 🛡️ ALLOWED ANCESTORS: Allows framing from other domains (for streaming)
     }
-  }
+  },
+  crossOriginEmbedderPolicy: false, // Required for some streaming sources
+  xFrameOptions: false // Disable legacy header to let CSP frame-ancestors take control
 })); // Security Headers
 app.use(compression()); // Gzip Compression
 app.use(cors()); // Allow Cross-Origin Requests
