@@ -26,10 +26,17 @@ const sendErrorPhoneResponse = (res, message, ip = 'Unknown') => {
 const apiAccessGuard = (providerName, endpointName = 'ALL') => {
     return async (req, res, next) => {
         try {
-            // Get client IP address early for debugging/logs
-            let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-            if (clientIp === '::1') clientIp = '127.0.0.1';
-            if (clientIp && clientIp.includes(',')) clientIp = clientIp.split(',')[0].trim();
+            // Get client IP address accurately (Handling Proxies & IPv6 Mapping)
+            let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+            
+            // 1. If multiple IPs in Forwarded-For, take the first one
+            if (clientIp.includes(',')) clientIp = clientIp.split(',')[0].trim();
+            
+            // 2. Clear IPv6 mapped IPv4 prefix (e.g. ::ffff:127.0.0.1 -> 127.0.0.1)
+            if (clientIp.startsWith('::ffff:')) clientIp = clientIp.substring(7);
+            
+            // 3. Normalize localhost
+            if (clientIp === '::1' || clientIp === 'localhost') clientIp = '127.0.0.1';
 
             // 1. Identify Client Access by IP and Provider
             // We no longer require a clientId header/query. We search for ANY active rule that allows this IP for this provider.
