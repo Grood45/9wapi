@@ -39,7 +39,10 @@ export const PROVIDER_ENDPOINTS = {
         { id: '/api/v1/events/gman/details', pathTemplate: '/api/v1/events/gman/details/:matchId', label: 'Gman: Match Details (Odds)', description: 'Real-time Match Odds, Bookmaker, and Fancy markets. Uses Specialist-Level On-Demand Polling (2s refreshing) for extreme performance.' }
     ],
     'D247': [
+        { id: '/api/v1/stream/magic', pathTemplate: '/api/v1/stream/magic/:eventId', label: 'Magic Stream API (Unified ID)', description: 'High-precision unified streaming API that supports both Diamond and Betfair event IDs.' },
         { id: '/api/v1/stream/diamondtv', pathTemplate: '/api/v1/stream/diamondtv/:eventId', label: 'DiamondTV: JSON API (Get Stream URL)', description: 'Fetches the clean proxy iframe URL for DiamondTV streaming.' },
-        { id: '/streming/diomondtv', pathTemplate: '/streming/diomondtv/:eventId', label: 'DiamondTV: Stream Playback (Iframe)', description: 'Renders the actual live stream player proxy.' }
+        { id: '/streming/diomondtv', pathTemplate: '/streming/diomondtv/:eventId', label: 'DiamondTV: Stream Playback (Iframe)', description: 'Renders the actual live stream player proxy.' },
+        { id: '/api/v1/stream/d267tv', pathTemplate: '/api/v1/stream/d267tv/:eventId', label: 'D267TV: JSON API (Get Stream URL)', description: 'Fetches the clean proxy iframe URL for D267TV streaming.' },
+        { id: '/streming/d267tv', pathTemplate: '/streming/d267tv/:eventId', label: 'D267TV: Stream Playback (Iframe)', description: 'Renders the actual live stream player proxy for D267TV.' }
     ]
 };

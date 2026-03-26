@@ -16,10 +16,12 @@ require("./cron/skyexchange/todayEvents.cron"); // NEW Fast Today Events Cron
 require("./cron/skyexchange/tomorrowEvents.cron"); // NEW Fast Tomorrow Events Cron
 require("./cron/skyexchange/sportEvents.cron"); // NEW Dynamic Sport-wise Cron (4, 1, 2, 137)
 require("./cron/betfair/cleanupMarketResults.cron"); // NEW Betfair Market Result Auto-Cleanup and Update Cron
+require("./cron/streaming/streamingSync.cron"); // NEW Magic Mapping (Diamond to Betfair) Cron
 
 const { gliveHandler } = require("./controllers/skyexchange/glive.controller");
 const { getEventStream } = require("./controllers/skyexchange/event.controller");
-const { getDiamondUrl, renderDiamondEmbed } = require("./controllers/d247/diamondtv.controller");
+const { getDiamondUrl, renderDiamondEmbed, getMagicUrl } = require("./controllers/d247/diamondtv.controller");
+const { getD267Url, renderD267Embed, proxyD267Handler } = require("./controllers/d247/d267tv.controller");
 const apiAccessGuard = require("./middlewares/apiAccessGuard");
 
 const app = express();
@@ -148,7 +150,12 @@ app.get("/api/v1/events/gman/details/:matchId", apiAccessGuard('Gman', '/api/v1/
 
 // ================= DIAMOND TV (D247) =================
 app.get("/api/v1/stream/diamondtv/:eventId", apiAccessGuard('D247', '/api/v1/stream/diamondtv'), getDiamondUrl); // ⚡ DiamondTV JSON API (Return Clean URL)
+app.get("/api/v1/stream/magic/:eventId", apiAccessGuard('D247', '/api/v1/stream/magic'), getMagicUrl); // ⚡ MAGIC Unified JSON API (Supports Diamond/Betfair IDs)
 app.get("/streming/diomondtv/:eventId", apiAccessGuard('D247', '/streming/diomondtv'), renderDiamondEmbed); // ⚡ DiamondTV Proxy Iframe (Rendered HTML)
+
+app.get("/api/v1/stream/d267tv/:eventId", apiAccessGuard('D247', '/api/v1/stream/d267tv'), getD267Url); // ⚡ D267TV JSON API (Return Clean URL)
+app.get("/streming/d267tv/:eventId", apiAccessGuard('D247', '/streming/d267tv'), renderD267Embed); // ⚡ D267TV Proxy Iframe (Rendered HTML)
+app.get("/streming/d267tv/proxy/:eventId", apiAccessGuard('D247', '/streming/d267tv/proxy'), proxyD267Handler); // ⚡ D267TV Server-Side Header Spoofing Proxy
 
 app.get("/test-socket", (req, res) => {
   res.sendFile(__dirname + "/test_socket.html");

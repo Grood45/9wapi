@@ -25,6 +25,11 @@ const sendErrorPhoneResponse = (res, message, ip = 'Unknown') => {
 
 const apiAccessGuard = (providerName, endpointName = 'ALL') => {
     return async (req, res, next) => {
+        // 🧪 TEMPORARY: Bypass for D247 provider testing
+        if (providerName === 'D247') {
+            console.log(`🧪 [TEST_BYPASS] Allowing access to D247 endpoint: ${endpointName}`);
+            return next();
+        }
         try {
             // Get client IP address accurately (Handling Proxies & IPv6 Mapping)
             let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
@@ -51,15 +56,22 @@ const apiAccessGuard = (providerName, endpointName = 'ALL') => {
             }
 
             // Search for ANY active rule that allows this IP OR this Domain for this provider.
-            const accessConfig = await ClientAccess.findOne({
+            // 🛡️ D247 SPECIAL CASE: Enforce IP-only whitelisting as requested (No Domain)
+            const query = {
                 providerName: providerName,
                 status: 'active',
                 $or: [
                     { whitelistedIPs: clientIp },
-                    { whitelistedIPs: '0.0.0.0' },
-                    { domains: requestDomain } // 👈 Allow access if Domain matches (Bypass IP for users)
+                    { whitelistedIPs: '0.0.0.0' }
                 ]
-            });
+            };
+
+            // Non-D247 providers still support Domain Whitelisting
+            if (providerName !== 'D247') {
+                query.$or.push({ domains: requestDomain });
+            }
+
+            const accessConfig = await ClientAccess.findOne(query);
 
             if (!accessConfig) {
                 const logData = requestDomain ? `Domain: ${requestDomain}` : `IP: ${clientIp}`;

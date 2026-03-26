@@ -6,7 +6,10 @@ import AccessControl from './pages/AccessControl';
 import Ledger from './pages/Ledger';
 import ApiDocumentation from './pages/ApiDocumentation';
 import Settings from './pages/Settings';
+import StreamingMerger from './pages/StreamingMerger';
 import Login from './pages/Login';
+import StreamingAnalytics from './pages/StreamingAnalytics';
+import DocumentsExport from './pages/DocumentsExport';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -34,6 +37,9 @@ function App() {
           <Route path="ledger" element={<Ledger />} />
           <Route path="docs" element={<ApiDocumentation />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="merger" element={<StreamingMerger />} />
+          <Route path="analytics" element={<StreamingAnalytics />} />
+          <Route path="docs/export" element={<DocumentsExport />} />
 
           {/* Fallback to Dashboard */}
           <Route path="*" element={<Navigate to="/" replace />} />

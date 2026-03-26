@@ -79,7 +79,20 @@ These APIs proxy live in-play event data from the Gman provider.
 
 ---
 
-## 🔹 6. Internal & Debug APIs
+## 🔹 7. Streaming & Merging APIs (New)
+These APIs provide high-precision streaming links by unifying multiple providers (Betfair, Diamond, D247).
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **GET** | `/api/v1/stream/magic/:eventId` | **Unified Streaming API (High Precision)**. Supports both Diamond (gmid) and Betfair event IDs. Automatically resolves the best available stream. |
+| **GET** | `/api/v1/stream/diamondtv/:eventId` | Fetches the clean proxy JSON response with the DiamondTV iframe URL. |
+| **GET** | `/streming/diomondtv/:eventId` | Direct proxy iframe for DiamondTV stream playback. |
+| **GET** | `/api/v1/stream/d267tv/:eventId` | Fetches the clean proxy JSON response with the D267TV iframe URL. |
+| **GET** | `/streming/d267tv/:eventId` | Direct proxy iframe for D267TV stream playback for authorized clients. |
+
+---
+
+## 🔹 8. Internal & Debug APIs
 Utility endpoints used for system health checks, testing, and debugging.
 
 | Method | Endpoint | Description |
@@ -92,7 +105,7 @@ Utility endpoints used for system health checks, testing, and debugging.
 
 ---
 
-## 🔹 6. WebSocket (Socket.IO)
+## 🔹 9. WebSocket (Socket.IO)
 Real-time data streaming for high-velocity updates.
 
 - **Path**: `/socket.io`

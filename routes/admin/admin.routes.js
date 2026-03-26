@@ -5,6 +5,7 @@ const clientController = require('../../controllers/admin/client.controller');
 const accessController = require('../../controllers/admin/access.controller');
 const ledgerController = require('../../controllers/admin/ledger.controller');
 const adminAuthController = require('../../controllers/admin/adminAuth.controller');
+const streamingMapController = require('../../controllers/admin/streamingMap.controller');
 const adminAuth = require('../../middlewares/adminAuth.middleware');
 
 // =======================
@@ -66,5 +67,18 @@ router.route('/ledgers/client/:clientId')
 
 router.route('/ledgers/:id/transaction')
     .post(ledgerController.addTransaction);
+
+// =======================
+// STREAMING MAPPING ROUTES
+// =======================
+const { getUnmappedEvents, mergeEvents, listMappings, unlinkMapping, getStreamingStats, forceSync, getMappingDetails } = require("../../controllers/admin/streamingMap.controller");
+
+router.get("/streaming/unmapped", getUnmappedEvents);
+router.post("/streaming/merge", mergeEvents);
+router.get("/streaming/mappings", listMappings);
+router.delete("/streaming/unlink/:id", unlinkMapping);
+router.get("/streaming/stats", getStreamingStats);
+router.post("/streaming/sync", forceSync);
+router.get('/streaming/details/:bfId/:dId', getMappingDetails);
 
 module.exports = router;

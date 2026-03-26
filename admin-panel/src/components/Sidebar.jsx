@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { HiOutlineHome, HiOutlineUsers, HiOutlineKey, HiOutlineCurrencyDollar, HiOutlineDocumentText, HiOutlineCog, HiOutlineLogout } from 'react-icons/hi';
+import { HiOutlineHome, HiOutlineUsers, HiOutlineKey, HiOutlineCurrencyDollar, HiOutlineDocumentText, HiOutlineCog, HiOutlineLogout, HiOutlineLink, HiOutlineChartBar } from 'react-icons/hi';
 
 export default function Sidebar() {
     const navigate = useNavigate();
@@ -37,6 +37,8 @@ export default function Sidebar() {
         { path: '/access', label: 'Access Control', icon: HiOutlineKey },
         { path: '/ledger', label: 'Ledger', icon: HiOutlineCurrencyDollar },
         { path: '/docs', label: 'API Documentation', icon: HiOutlineDocumentText },
+        { path: '/merger', label: 'Streaming Merger', icon: HiOutlineLink },
+        { path: '/analytics', label: 'Analytics Hub', icon: HiOutlineChartBar },
         { path: '/settings', label: 'Settings', icon: HiOutlineCog },
     ];
 

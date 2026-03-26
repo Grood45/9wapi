@@ -1,12 +1,162 @@
 const { fetchDiamondStream } = require("../../services/d247/diamondtv.service");
 const ClientAccess = require("../../models/ClientAccess");
+const StreamingMap = require("../../models/StreamingMap");
 
 /**
  * ⚡ 20-Year Exp Performance Strategy:
- * 1. Clean Export: Return a stable, brand-safe URL to the client.
- * 2. Zero-Leakage: Never expose provider headers or original URLs to the browser.
- * 3. Mobile-First: Ensure the iframe is responsive and handles full-screen correctly.
+ * 1. O(1) Magic Lookup: Sub-1ms ID resolution using Local RAM Cache.
+ * 2. Rich Metadata: Return both IDs, Sport, Name, and Start Time for transparency.
+ * 3. Atomic Response: Standardized JSON for all clients.
  */
+
+// 🚀 RAM CACHE (O(1) Velocity) - Refreshed by the background worker
+let MAGIC_CACHE = {
+    byDiamond: new Map(),
+    byBetfair: new Map(),
+    byD247: new Map()
+};
+
+// 🧠 Advanced Fuzzy Match Helper (Dice Coefficient)
+const getSimilarity = (str1, str2) => {
+    if (!str1 || !str2) return 0;
+    const s1 = str1.toLowerCase().replace(/\s+/g, "");
+    const s2 = str2.toLowerCase().replace(/\s+/g, "");
+    if (s1 === s2) return 1;
+    const getBigrams = (s) => {
+        const bigrams = new Set();
+        for (let i = 0; i < s.length - 1; i++) bigrams.add(s.substring(i, i + 2));
+        return bigrams;
+    };
+    const b1 = getBigrams(s1);
+    const b2 = getBigrams(s2);
+    const intersection = new Set([...b1].filter(x => b2.has(x)));
+    return (2 * intersection.size) / (b1.size + b2.size);
+};
+
+async function warmMagicCache() {
+    try {
+        const mappings = await StreamingMap.find().lean();
+        const diamondMap = new Map();
+        const betfairMap = new Map();
+        const d247Map = new Map();
+
+        mappings.forEach(m => {
+            if (m.diamondId) diamondMap.set(m.diamondId.toString(), m);
+            if (m.betfairId) betfairMap.set(m.betfairId.toString(), m);
+            if (m.d247Id) d247Map.set(m.d247Id.toString(), m);
+        });
+
+        MAGIC_CACHE = { byDiamond: diamondMap, byBetfair: betfairMap, byD247: d247Map };
+    } catch (e) {
+        console.error("❌ [MAGIC_CACHE_ERROR]", e.message);
+    }
+}
+
+// Warm cache every 60s
+setInterval(warmMagicCache, 60000);
+warmMagicCache(); 
+
+async function getMagicUrl(req, res) {
+    const { eventId } = req.params;
+    try {
+        if (!eventId) return res.status(400).json({ error: "MISSING_EVENT_ID" });
+
+        const idStr = eventId.toString();
+
+        // 1. Resolve ID via RAM Cache (Sub-1ms)
+        let resolved = MAGIC_CACHE.byDiamond.get(idStr) || 
+                       MAGIC_CACHE.byBetfair.get(idStr) || 
+                       MAGIC_CACHE.byD247.get(idStr);
+
+        let bfId = resolved ? resolved.betfairId : idStr;
+        let dId = resolved ? resolved.diamondId : null;
+        let d247Id = resolved ? resolved.d247Id : null;
+        let eventName = resolved ? resolved.eventName : "Direct Stream";
+        let isFallback = false;
+
+        // 2. Discovery Engine (Real-time Name Match Fallback)
+        // If not mapped, we try to find a name match in active provider lists
+        if (!resolved) {
+            console.log(`🔍 [DISCOVERY] No mapping for ${idStr}. Booting Discovery Engine...`);
+            
+            // Fetch Betfair list to get the name of this match
+            // We'll search in all 3 sports to find the canonical name
+            const sports = [1, 2, 4];
+            let targetName = null;
+            let targetSportId = null;
+
+            for (const sId of sports) {
+                const bfRes = await axios.get(`https://111111.info/pad=82/listGames?sport=${sId}&inplay=1`).catch(() => ({}));
+                const games = bfRes.data?.result || (Array.isArray(bfRes.data) ? bfRes.data : []);
+                const match = games.find(g => g.eventId.toString() === idStr);
+                if (match) {
+                    targetName = match.eventName;
+                    targetSportId = sId;
+                    break;
+                }
+            }
+
+            if (targetName) {
+                console.log(`✨ [DISCOVERY] Name found: "${targetName}". Searching providers...`);
+                
+                // Fetch Diamond & D247 lists
+                const diamondUrls = { 1: "https://marketsarket.qnsports.live/getsoccermatches", 2: "https://marketsarket.qnsports.live/gettennismatches" };
+                const [dRes, d247Res] = await Promise.all([
+                    diamondUrls[targetSportId] ? axios.get(diamondUrls[targetSportId]).catch(() => ({})) : Promise.resolve({}),
+                    axios.get('https://feed.igames.cloud/api/matches/inplay-and-upcoming', {
+                        headers: { 'x-igames-key': 'sdfd89453n-dsak432-JGdas834-Pks73ndsa-Hfg38bhb' }
+                    }).catch(() => ({}))
+                ]);
+
+                const dMatches = dRes.data || [];
+                const d247Matches = d247Res.data?.data || [];
+
+                // Fuzzy match in Diamond
+                const bestD = dMatches
+                    .map(m => ({ m, sim: getSimilarity(targetName, m.ename) }))
+                    .filter(x => x.sim > 0.85)
+                    .sort((a, b) => b.sim - a.sim)[0];
+
+                // Fuzzy match in D247
+                const bestD247 = d247Matches
+                    .map(m => ({ m, sim: getSimilarity(targetName, m.event_name) }))
+                    .filter(x => x.sim > 0.85)
+                    .sort((a, b) => b.sim - a.sim)[0];
+
+                if (bestD) dId = bestD.m.gmid;
+                if (bestD247) d247Id = bestD247.m.event_id;
+                
+                if (bestD || bestD247) {
+                    eventName = targetName;
+                    isFallback = true;
+                    console.log(`✅ [DISCOVERY_SUCCESS] Fallback linked! D:${dId || '❌'} D247:${d247Id || '❌'}`);
+                }
+            }
+        }
+
+        // 3. Priority Engine (Diamond > D247)
+        // Currently we use Betfair ID for the player as requested
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const tvUrl = `${protocol}://${host}/streming/diomondtv/${bfId}`;
+
+        res.json({
+            success: true,
+            provider: dId ? 'DiamondTV' : (d247Id ? 'D247' : 'Betfair Direct'),
+            requestedId: eventId,
+            betfairId: bfId,
+            diamondId: dId,
+            d247Id: d247Id,
+            eventName,
+            isMapped: !!resolved,
+            isFallback,
+            tvUrl
+        });
+
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+}
 
 async function getDiamondUrl(req, res) {
     const { eventId } = req.params;
@@ -136,4 +286,4 @@ async function renderDiamondEmbed(req, res) {
     }
 }
 
-module.exports = { getDiamondUrl, renderDiamondEmbed };
+module.exports = { getDiamondUrl, renderDiamondEmbed, getMagicUrl };
