@@ -16,6 +16,7 @@ let MAGIC_CACHE = {
     byBetfair: new Map(),
     byD247: new Map()
 };
+const DISCOVERY_CACHE = new Map(); // ⚡ Short-lived discovery cache to prevent API flooding
 
 // 🧠 Advanced Fuzzy Match Helper (Dice Coefficient)
 const getSimilarity = (str1, str2) => {
@@ -78,7 +79,15 @@ async function getMagicUrl(req, res) {
         // 2. Discovery Engine (Real-time Name Match Fallback)
         // If not mapped, we try to find a name match in active provider lists
         if (!resolved) {
-            console.log(`🔍 [DISCOVERY] No mapping for ${idStr}. Booting Discovery Engine...`);
+            // 🚀 Discovery Cache Check (5-min TTL)
+            const cachedDiscovery = DISCOVERY_CACHE.get(idStr);
+            if (cachedDiscovery && Date.now() < cachedDiscovery.expiry) {
+                console.log(`🚀 [DISCOVERY_CACHE_HIT] Using cached result for ${idStr}`);
+                const disc = cachedDiscovery.data;
+                bfId = disc.bfId; dId = disc.dId; d247Id = disc.d247Id;
+                eventName = disc.eventName; isFallback = disc.isFallback;
+            } else {
+                console.log(`🔍 [DISCOVERY_BOOT] No mapping for ${idStr}. Analyzing providers...`);
             
             // Fetch Betfair list to get the name of this match
             // We'll search in all 3 sports to find the canonical name
@@ -110,7 +119,7 @@ async function getMagicUrl(req, res) {
                 ]);
 
                 const dMatches = dRes.data || [];
-                const d247Matches = d247Res.data?.data || [];
+                const d247Matches = d247Res.data?.data?.matches || [];
 
                 // Fuzzy match in Diamond
                 const bestD = dMatches
@@ -131,9 +140,31 @@ async function getMagicUrl(req, res) {
                     eventName = targetName;
                     isFallback = true;
                     console.log(`✅ [DISCOVERY_SUCCESS] Fallback linked! D:${dId || '❌'} D247:${d247Id || '❌'}`);
+
+                    // 🚀 PERSIST TO DB (User's Hybrid Strategy)
+                    // This creates a permanent mapping so the NEXT person gets it in <1ms
+                    await StreamingMap.findOneAndUpdate(
+                        { betfairId: idStr },
+                        { 
+                            diamondId: dId ? dId.toString() : null,
+                            d247Id: d247Id ? d247Id.toString() : null,
+                            eventName,
+                            sportId: targetSportId,
+                            status: "auto_discovery"
+                        },
+                        { upsert: true }
+                    );
+                    warmMagicCache(); // Instant RAM refresh
                 }
+
+                // Cache the discovery result (even if not found, to avoid retrying immediately)
+                DISCOVERY_CACHE.set(idStr, {
+                    expiry: Date.now() + (5 * 60 * 1000), // 5 minutes
+                    data: { bfId, dId, d247Id, eventName, isFallback }
+                });
             }
         }
+    }
 
         // 3. Priority Engine (Diamond > D247)
         // Currently we use Betfair ID for the player as requested

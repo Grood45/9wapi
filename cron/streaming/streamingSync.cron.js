@@ -179,7 +179,7 @@ async function syncEvents() {
     }
 }
 
-// 🕒 Run every 5 minutes
-cron.schedule("*/5 * * * *", syncEvents);
+// 🕒 Run every 1 minute
+cron.schedule("*/1 * * * *", syncEvents);
 
 module.exports = { syncEvents, getNextSyncSeconds };
