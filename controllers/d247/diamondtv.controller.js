@@ -222,42 +222,43 @@ async function renderDiamondEmbed(req, res) {
 
         const { streamingUrl } = streamData;
 
-        // 🛡️ Domain Verification Logic
-        const referer = req.get('Referer') || req.get('Origin') || "";
-        let domainAuthorized = false;
-
-        if (referer) {
-            try {
-                // Extract domain from Referer (e.g., https://9x.live/match -> 9x.live)
-                const urlObj = new URL(referer);
-                const requestDomain = urlObj.hostname;
-
-                // Find an active D247 access config for this domain
-                const access = await ClientAccess.findOne({
-                    providerName: 'D247',
-                    status: 'active',
-                    domains: requestDomain,
-                    validUntil: { $gt: new Date() }
-                });
-
-                if (access) {
-                    domainAuthorized = true;
-                    console.log(`✅ [AUTH_SUCCESS] Domain authorized: ${requestDomain}`);
-                } else {
-                    console.warn(`🚫 [AUTH_FAIL] Domain NOT whitelisted: ${requestDomain}`);
-                }
-            } catch (err) {
-                console.error(`❌ [AUTH_ERROR] Invalid Referer URL: ${referer}`);
-            }
-        } else {
-            console.warn(`🚫 [AUTH_FAIL] No Referer found in request`);
-        }
-
-        // ⚠️ Skip authorization for local testing or if you want to allow direct access for now
-        // For production, this should be strictly 'if (!domainAuthorized)'
-        if (!domainAuthorized && process.env.NODE_ENV === 'production') {
-            return res.status(403).send("<h1>Unauthorized Domain. Please contact administrator.</h1>");
-        }
+        /* 🛡️ Domain Verification Logic (Disabled per user request)
+226:         const referer = req.get('Referer') || req.get('Origin') || "";
+227:         let domainAuthorized = false;
+228: 
+229:         if (referer) {
+230:             try {
+231:                 // Extract domain from Referer (e.g., https://9x.live/match -> 9x.live)
+232:                 const urlObj = new URL(referer);
+233:                 const requestDomain = urlObj.hostname;
+234: 
+235:                 // Find an active D247 access config for this domain
+236:                 const access = await ClientAccess.findOne({
+237:                     providerName: 'D247',
+238:                     status: 'active',
+239:                     domains: requestDomain,
+240:                     validUntil: { $gt: new Date() }
+241:                 });
+242: 
+243:                 if (access) {
+244:                     domainAuthorized = true;
+245:                     console.log(`✅ [AUTH_SUCCESS] Domain authorized: ${requestDomain}`);
+246:                 } else {
+247:                     console.warn(`🚫 [AUTH_FAIL] Domain NOT whitelisted: ${requestDomain}`);
+248:                 }
+249:             } catch (err) {
+250:                 console.error(`❌ [AUTH_ERROR] Invalid Referer URL: ${referer}`);
+251:             }
+252:         } else {
+253:             console.warn(`🚫 [AUTH_FAIL] No Referer found in request`);
+254:         }
+255: 
+256:         // ⚠️ Skip authorization for local testing or if you want to allow direct access for now
+257:         // For production, this should be strictly 'if (!domainAuthorized)'
+258:         if (!domainAuthorized && process.env.NODE_ENV === 'production') {
+259:             return res.status(403).send("<h1>Unauthorized Domain. Please contact administrator.</h1>");
+260:         }
+261:         */
 
         // 🚀 Premium Iframe Wrapper with Smart Masking (To hide provider-side 'Loading' text)
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
