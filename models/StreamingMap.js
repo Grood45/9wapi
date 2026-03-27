@@ -15,6 +15,8 @@ const streamingMapSchema = new mongoose.Schema({
     sportId: { type: Number, required: true }, // 1=Soccer, 2=Tennis, 4=Cricket
     status: { type: String, enum: ['auto', 'manual'], default: 'auto' },
     eventTime: { type: Date },
+    scoreUrl: { type: String },   // 3rd party LMT link
+    scoreUrlV2: { type: String }, // 3rd party Genius link
     createdAt: { type: Date, default: Date.now }
 });
 

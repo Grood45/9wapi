@@ -166,11 +166,42 @@ async function getMagicUrl(req, res) {
         }
     }
 
-        // 3. Priority Engine (Diamond > D247)
-        // Currently we use Betfair ID for the player as requested
+        // 3. Score Intelligence Engine (LMT + BetGenius)
+        let scoreUrl = resolved ? resolved.scoreUrl : null;
+        let scoreUrlV2 = resolved ? resolved.scoreUrlV2 : null;
+
+        // If score URLs are missing, fetch from 3rd party API and persist to DB
+        // Using Betfair ID for score lookup
+        if (!scoreUrl || !scoreUrlV2) {
+            try {
+                console.log(`📡 [SCORE_FETCH] Fetching scores for ${bfId}...`);
+                const scoreRes = await axios.get(`https://api.1ten365.com/api/event/odds/${bfId}`, { timeout: 3000 }).catch(() => ({}));
+                const scoreData = scoreRes.data?.data;
+                if (scoreData) {
+                    scoreUrl = scoreData.iframeScore || null;
+                    scoreUrlV2 = scoreData.iframeScoreV2 || null;
+
+                    // Persistence: Save to DB so both MAGIC API and PROXY can use it
+                    await StreamingMap.findOneAndUpdate(
+                        { betfairId: bfId },
+                        { scoreUrl, scoreUrlV2 },
+                        { upsert: true }
+                    );
+                    warmMagicCache(); // Instant RAM update
+                }
+            } catch (err) {
+                console.error(`❌ [SCORE_FETCH_ERROR] for ${bfId}:`, err.message);
+            }
+        }
+
+        // 4. Priority Engine (Diamond > D247)
         const protocol = req.protocol;
         const host = req.get('host');
         const tvUrl = `${protocol}://${host}/streming/diomondtv/${bfId}`;
+        
+        // Branded Score Proxies (For privacy and zero-restriction)
+        const localScoreUrl = scoreUrl ? `${protocol}://${host}/streming/score/${bfId}` : null;
+        const localScoreUrlV2 = scoreUrlV2 ? `${protocol}://${host}/streming/scoreV2/${bfId}` : null;
 
         res.json({
             success: true,
@@ -182,7 +213,9 @@ async function getMagicUrl(req, res) {
             eventName,
             isMapped: !!resolved,
             isFallback,
-            tvUrl
+            tvUrl,
+            scoreUrl: localScoreUrl,
+            scoreUrlV2: localScoreUrlV2
         });
 
     } catch (e) {

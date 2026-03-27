@@ -157,6 +157,11 @@ app.get("/api/v1/stream/d267tv/:eventId", apiAccessGuard('D247', '/api/v1/stream
 app.get("/streming/d267tv/:eventId", apiAccessGuard('D247', '/streming/d267tv'), renderD267Embed); // ⚡ D267TV Proxy Iframe (Rendered HTML)
 app.get("/streming/d267tv/proxy/:eventId", apiAccessGuard('D247', '/streming/d267tv/proxy'), proxyD267Handler); // ⚡ D267TV Server-Side Header Spoofing Proxy
 
+// ================= SCORE PROXIES (NEW) =================
+const { renderScoreEmbed, renderScoreV2Embed } = require("./controllers/score/score.controller");
+app.get("/streming/score/:eventId", renderScoreEmbed); // ⚡ Score LMT Proxy
+app.get("/streming/scoreV2/:eventId", renderScoreV2Embed); // ⚡ Score Genius Proxy
+
 app.get("/test-socket", (req, res) => {
   res.sendFile(__dirname + "/test_socket.html");
 });
