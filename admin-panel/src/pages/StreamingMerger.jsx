@@ -82,18 +82,18 @@ export default function StreamingMerger() {
     }, []);
 
     const filteredBetfair = betfairPool.filter(e => 
-        e.name.toLowerCase().includes(search.toLowerCase()) || 
-        e.id.toString().includes(search)
+        (e.name || "").toLowerCase().includes(search.toLowerCase()) || 
+        (e.id || "").toString().includes(search)
     );
 
     const filteredDiamond = diamondPool.filter(e => 
-        e.name.toLowerCase().includes(search.toLowerCase()) || 
-        e.id.toString().includes(search)
+        (e.name || "").toLowerCase().includes(search.toLowerCase()) || 
+        (e.id || "").toString().includes(search)
     );
 
     const filteredD247 = d247Pool.filter(e => 
-        e.name.toLowerCase().includes(search.toLowerCase()) || 
-        e.id.toString().includes(search)
+        (e.name || "").toLowerCase().includes(search.toLowerCase()) || 
+        (e.id || "").toString().includes(search)
     );
 
     const handleMerge = async () => {
@@ -148,8 +148,8 @@ export default function StreamingMerger() {
     };
 
     const filteredMappings = mappings.filter(m => {
-        const matchesSearch = m.eventName.toLowerCase().includes(mappedSearch.toLowerCase()) || 
-                            m.betfairId.toString().includes(mappedSearch);
+        const matchesSearch = (m.eventName || "").toLowerCase().includes(mappedSearch.toLowerCase()) || 
+                            (m.betfairId || "").toString().includes(mappedSearch);
         const matchesSport = mappedSportFilter === "all" || m.sportId.toString() === mappedSportFilter;
         return matchesSearch && matchesSport;
     });
@@ -364,7 +364,7 @@ export default function StreamingMerger() {
                                     <span className="text-white font-black italic tracking-tight text-lg group-hover:text-blue-400 transition-colors uppercase">{e.name}</span>
                                     <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                                         <span>#{e.id}</span>
-                                        <span>{e.time ? new Date(e.time).toLocaleString() : "Invalid Date"}</span>
+                                        <span>{(e.time && !isNaN(new Date(e.time))) ? new Date(e.time).toLocaleString() : "Date N/A"}</span>
                                     </div>
                                 </div>
                                 {selectedBf?.id === e.id && (

@@ -58,9 +58,9 @@ async function getUnmappedEvents(req, res) {
 
         res.json({
             success: true,
-            betfair: unmappedBetfair.map(e => ({ id: e.eventId, name: e.eventName, time: e.startTime })),
-            diamond: unmappedDiamond.map(e => ({ id: e.gmid, name: e.ename })),
-            d247: unmappedD247.map(e => ({ id: e.event_id, name: e.event_name, time: e.start_time }))
+            betfair: unmappedBetfair.map(e => ({ id: e.eventId, name: e.eventName || "Unknown Betfair Event", time: e.startTime })),
+            diamond: unmappedDiamond.map(e => ({ id: e.gmid, name: e.ename || "Unknown Diamond Event" })),
+            d247: unmappedD247.map(e => ({ id: e.event_id, name: e.event_name || "Unknown D247 Event", time: e.start_time }))
         });
 
     } catch (e) {
