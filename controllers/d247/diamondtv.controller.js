@@ -1,4 +1,4 @@
-const { fetchDiamondStream, proxyDiamondStream, getProxiedM3U8 } = require("../../services/d247/diamondtv.service");
+const { fetchDiamondStream, proxyDiamondStream } = require("../../services/d247/diamondtv.service");
 const ClientAccess = require("../../models/ClientAccess");
 const StreamingMap = require("../../models/StreamingMap");
 const axios = require("axios");
@@ -249,16 +249,15 @@ async function renderDiamondEmbed(req, res) {
     try {
         const streamData = await fetchDiamondStream(eventId);
 
-        if (!streamData || !streamData.m3u8Url) {
+        if (!streamData || !streamData.streamingUrl) {
             return res.status(404).send("<body style='background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;'><h1>Stream not available yet.</h1></body>");
         }
 
         const protocol = req.protocol;
         const host = req.get('host');
-        // 🚀 PROXIED M3U8: This manifest will point to our internal segment proxy
-        const proxiedM3u8 = `${protocol}://${host}/streming/diomondtv/m3u8?id=${eventId}`;
+        const proxyUrl = `${protocol}://${host}/streming/diomondtv/proxy/${eventId}`;
 
-        // 🚀 Premium HLS Player: No CORS issues because manifest is from 'self'
+        // 🚀 Premium Iframe Proxy Wrapper
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.send(`
             <!DOCTYPE html>
@@ -266,60 +265,23 @@ async function renderDiamondEmbed(req, res) {
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                <title>Diamond TV - Live [STABLE]</title>
-                <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+                <title>Diamond TV - Live Stream</title>
                 <style>
-                    body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
-                    .video-container { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-                    video { width: 100%; height: 100%; object-fit: contain; }
-                    .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-                    .left-controls { position: absolute; top: 50%; left: 15px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 20px; z-index: 20; }
-                    .icon { width: 35px; height: 35px; background: rgba(0,0,0,0.5); color: #fff; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; pointer-events: auto; transition: transform 0.2s; -webkit-user-select: none; user-select: none; font-size: 20px; }
-                    .icon:hover { transform: scale(1.1); background: rgba(0,0,0,0.8); }
-                    #loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; text-align: center; z-index: 15; }
-                    .spinner { width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #2563eb; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 10px auto; }
+                    body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; }
+                    iframe { border: none; width: 100%; height: 100%; }
+                    #mask { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10; display: flex; align-items: center; justify-content: center; transition: opacity 0.5s; }
+                    .spinner { width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #2563eb; border-radius: 50%; animation: spin 1s linear infinite; }
                     @keyframes spin { to { transform: rotate(360deg); } }
                 </style>
             </head>
             <body>
-                <div class="video-container">
-                    <div id="loader">
-                        <div class="spinner"></div>
-                        <div style="font-size: 12px; opacity: 0.8;">LOADED VIA PROXY HUB...</div>
-                    </div>
-                    <video id="video" autoplay muted playsinline></video>
-                    <div class="overlay">
-                        <div class="left-controls">
-                            <div class="icon" onclick="toggleMute()" id="muteIcon">🔇</div>
-                            <div class="icon" onclick="location.reload()">🔄</div>
-                        </div>
-                    </div>
-                </div>
+                <div id="mask"><div class="spinner"></div></div>
+                <iframe src="${proxyUrl}" allowfullscreen allow="autoplay"></iframe>
                 <script>
-                    const video = document.getElementById('video');
-                    const proxiedM3u8 = '${proxiedM3u8}';
-                    const loader = document.getElementById('loader');
-
-                    if (Hls.isSupported()) {
-                        const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-                        hls.loadSource(proxiedM3u8);
-                        hls.attachMedia(video);
-                        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                            video.play().catch(e => console.log("Play failed", e));
-                            loader.style.display = 'none';
-                        });
-                        hls.on(Hls.Events.ERROR, (event, data) => {
-                            if (data.fatal) hls.recoverMediaError();
-                        });
-                    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                        video.src = proxiedM3u8;
-                        video.onloadedmetadata = () => { video.play(); loader.style.display = 'none'; };
-                    }
-                    function toggleMute() {
-                        video.muted = !video.muted;
-                        document.getElementById('muteIcon').innerText = video.muted ? '🔇' : '🔊';
-                    }
-                    video.onplaying = () => { loader.style.display = 'none'; };
+                    setTimeout(() => {
+                        const mask = document.getElementById('mask');
+                        if (mask) { mask.style.opacity = '0'; setTimeout(() => mask.remove(), 500); }
+                    }, 3000);
                 </script>
             </body>
             </html>
@@ -332,20 +294,7 @@ async function renderDiamondEmbed(req, res) {
 async function handleM3U8Proxy(req, res) {
     const { id } = req.query;
     try {
-        if (!id) return res.status(400).send("Missing ID");
-        
-        const streamData = await fetchDiamondStream(id);
-        if (!streamData || !streamData.m3u8Url) return res.status(404).send("Stream not found");
-
-        const protocol = req.protocol;
-        const host = req.get('host');
-        const proxyBase = `${protocol}://${host}/streming/diomondtv/asset`;
-        
-        const rewrittenM3u8 = await getProxiedM3U8(streamData.m3u8Url, proxyBase);
-        
-        res.set('Content-Type', 'application/vnd.apple.mpegurl');
-        res.set('Access-Control-Allow-Origin', '*');
-        res.send(rewrittenM3u8);
+        return res.status(410).send("M3U8 Proxy is deprecated. Use Iframe Proxy.");
     } catch (e) {
         res.status(500).send(e.message);
     }
@@ -357,48 +306,36 @@ async function proxyDiamondHandler(req, res) {
     try {
         const { content, targetUrl } = await proxyDiamondStream(eventId);
 
-        let providerOrigin = "https://www.betswiz.in/";
-        try {
-            const urlObj = new URL(targetUrl);
-            providerOrigin = urlObj.origin;
-            console.log(`🔗 [DIAMOND_PROXY] Setting Provider Origin: ${providerOrigin}`);
-        } catch (err) {
-            console.error("❌ [DIAMOND_PROXY_ERROR] Failed to parse provider origin:", err.message);
-        }
-
-        // 🚀 ASSET REWRITING ENGINE: Proxy all internal scripts/styles to bypass CORS
+        const urlObj = new URL(targetUrl);
+        const providerOrigin = urlObj.origin;
         const protocol = req.protocol;
         const host = req.get('host');
-        const assetProxyBase = `${protocol}://${host}/streming/diomondtv/asset?origin=${encodeURIComponent(providerOrigin)}&url=`;
 
+        // 🚀 ADVANCED HTML REWRITER
         let modifiedContent = content;
 
-        // 1. Rewrite <script src="...">
-        modifiedContent = modifiedContent.replace(/(<script\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi, (match, p1, p2, p3) => {
-            const absoluteUrl = p2.startsWith('http') ? p2 : new URL(p2, providerOrigin + '/').href;
-            return `${p1}${assetProxyBase}${encodeURIComponent(absoluteUrl)}${p3}`;
+        // 1. Inject <base> tag to fix relative links automatically
+        modifiedContent = modifiedContent.replace('<head>', `<head>\n    <base href="${providerOrigin}/">`);
+
+        // 2. Rewrite all src/href to go through our asset proxy (Optional but safer)
+        const assetProxyBase = `${protocol}://${host}/streming/diomondtv/asset?origin=${encodeURIComponent(providerOrigin)}&url=`;
+        
+        modifiedContent = modifiedContent.replace(/(src|href)=["'](?!http|data:)([^"']+)["']/g, (match, attr, path) => {
+            const abs = path.startsWith('/') ? `${providerOrigin}${path}` : `${providerOrigin}/${path}`;
+            return `${attr}="${assetProxyBase}${encodeURIComponent(abs)}"`;
         });
 
-        // 2. Rewrite <link href="...">
-        modifiedContent = modifiedContent.replace(/(<link\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi, (match, p1, p2, p3) => {
-            if (p2.includes('.css') || p2.includes('.ico') || p2.includes('.png')) {
-                const absoluteUrl = p2.startsWith('http') ? p2 : new URL(p2, providerOrigin + '/').href;
-                return `${p1}${assetProxyBase}${encodeURIComponent(absoluteUrl)}${p3}`;
-            }
-            return match;
-        });
-
-        // 3. Inject Base Tag as fallback
-        const headStart = modifiedContent.indexOf('<head>');
-        if (headStart !== -1) {
-            const headTag = '<head>';
-            const baseTag = `\n    <base href="${providerOrigin}/">`;
-            modifiedContent = modifiedContent.slice(0, headStart + headTag.length) + baseTag + modifiedContent.slice(headStart + headTag.length);
-        }
+        // 3. Spoof 'top' and 'parent' to prevent frame-breaking scripts
+        modifiedContent = modifiedContent.replace('</head>', `
+            <script>
+                try {
+                    window.top = window.self;
+                    window.parent = window.self;
+                } catch (e) {}
+            </script>
+        </head>`);
 
         res.set('Content-Type', 'text/html');
-        res.set('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob:; style-src * 'unsafe-inline';");
-        res.set('X-Frame-Options', 'ALLOWALL');
         res.send(modifiedContent);
     } catch (e) {
         res.status(500).send(`Proxy Error: ${e.message}`);
