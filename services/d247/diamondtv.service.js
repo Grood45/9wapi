@@ -29,7 +29,7 @@ async function fetchDiamondStream(eventId) {
             headers: {
                 'Accept': 'application/json, text/plain, */*',
                 'Accept-Language': 'en-US,en;q=0.9',
-                'Authorization': '728BE2AC7246B7E8B84F2671039E7E58',
+                'Authorization': 'A12A00F285BA335A09C6EF65CD509814',
                 'Connection': 'keep-alive',
                 'Host': 'api.betswiz.in',
                 'Origin': 'https://www.betswiz.in',
@@ -38,7 +38,7 @@ async function fetchDiamondStream(eventId) {
                 'Sec-Fetch-Mode': 'cors',
                 'Sec-Fetch-Site': 'same-site',
                 'TE': 'trailers',
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0'
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0'
             },
             timeout: 8000
         });
@@ -85,7 +85,7 @@ async function proxyDiamondStream(eventId) {
                 'Accept-Language': 'en-US,en;q=0.5',
                 'Connection': 'keep-alive',
                 'Referer': 'https://www.betswiz.in/',
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0'
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0'
             },
             timeout: 10000
         });

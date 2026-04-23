@@ -249,107 +249,35 @@ async function renderDiamondEmbed(req, res) {
     try {
         const streamData = await fetchDiamondStream(eventId);
 
-        if (!streamData) {
-            return res.status(404).send("<h1>Stream not available. Please try later.</h1>");
+        if (!streamData || !streamData.streamingUrl) {
+            return res.status(404).send("<body style='background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;'><h1>Stream not available yet.</h1></body>");
         }
 
         const { streamingUrl } = streamData;
 
-        /* 🛡️ Domain Verification Logic (Disabled per user request)
-226:         const referer = req.get('Referer') || req.get('Origin') || "";
-227:         let domainAuthorized = false;
-228: 
-229:         if (referer) {
-230:             try {
-231:                 // Extract domain from Referer (e.g., https://9x.live/match -> 9x.live)
-232:                 const urlObj = new URL(referer);
-233:                 const requestDomain = urlObj.hostname;
-234: 
-235:                 // Find an active D247 access config for this domain
-236:                 const access = await ClientAccess.findOne({
-237:                     providerName: 'D247',
-238:                     status: 'active',
-239:                     domains: requestDomain,
-240:                     validUntil: { $gt: new Date() }
-241:                 });
-242: 
-243:                 if (access) {
-244:                     domainAuthorized = true;
-245:                     console.log(`✅ [AUTH_SUCCESS] Domain authorized: ${requestDomain}`);
-246:                 } else {
-247:                     console.warn(`🚫 [AUTH_FAIL] Domain NOT whitelisted: ${requestDomain}`);
-248:                 }
-249:             } catch (err) {
-250:                 console.error(`❌ [AUTH_ERROR] Invalid Referer URL: ${referer}`);
-251:             }
-252:         } else {
-253:             console.warn(`🚫 [AUTH_FAIL] No Referer found in request`);
-254:         }
-255: 
-256:         // ⚠️ Skip authorization for local testing or if you want to allow direct access for now
-257:         // For production, this should be strictly 'if (!domainAuthorized)'
-258:         if (!domainAuthorized && process.env.NODE_ENV === 'production') {
-259:             return res.status(403).send("<h1>Unauthorized Domain. Please contact administrator.</h1>");
-260:         }
-261:         */
-
-        // 🛡️ Use a internal proxy URL to mask IP from Betswiz
-        const protocol = req.protocol;
-        const host = req.get('host');
-        const proxyUrl = `${protocol}://${host}/streming/diomondtv/proxy/${eventId}`;
-
-        // 🚀 Premium Iframe Wrapper with Smart Masking (To hide provider-side 'Loading' text)
+        // 🚀 Direct Iframe: Bypasses server-side proxy CORS issues
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-        res.set('Pragma', 'no-cache');
-        res.set('Expires', '0');
-
         res.send(`
             <!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Diamond TV - Live Stream [STABLE]</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                <title>Diamond TV - Live Stream</title>
                 <style>
-                    body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; position: relative; }
-                    iframe { border: none; height: 100%; width: 100%; z-index: 1; }
-                    
-                    /* ⚡ External Mask: Covers provider-side 'Loading Stream...' text */
-                    #external-mask {
-                        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-                        background: #000; z-index: 10; display: flex; align-items: center; justify-content: center;
-                        transition: opacity 0.8s ease;
-                        pointer-events: none;
-                    }
-                    .spinner {
-                        width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #fff;
-                        border-radius: 50%; animation: spin 1s linear infinite;
-                    }
-                    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                    body, html { margin: 0; padding: 0; height: 100%; width: 100%; background: #000; overflow: hidden; }
+                    iframe { border: none; width: 100%; height: 100%; }
                 </style>
             </head>
             <body>
-                <div id="external-mask">
-                    <div class="spinner"></div>
-                </div>
                 <iframe 
-                    src="${proxyUrl}" 
+                    src="${streamingUrl}" 
                     allowfullscreen="true" 
                     webkitallowfullscreen="true" 
                     mozallowfullscreen="true" 
                     scrolling="no"
                     allow="autoplay"
                 ></iframe>
-                <script>
-                    // ⚡ High-Performance Masking Logic (Hide provider text for 2.5s)
-                    setTimeout(() => {
-                        const mask = document.getElementById('external-mask');
-                        if (mask) {
-                            mask.style.opacity = '0';
-                            setTimeout(() => mask.remove(), 800);
-                        }
-                    }, 2500); 
-                </script>
             </body>
             </html>
         `);
@@ -358,34 +286,52 @@ async function renderDiamondEmbed(req, res) {
     }
 }
 
+
 async function proxyDiamondHandler(req, res) {
     const { eventId } = req.params;
     try {
         const { content, targetUrl } = await proxyDiamondStream(eventId);
 
-        // 🚀 DYNAMIC BASE: Extract origin from the provider's URL
         let providerOrigin = "https://www.betswiz.in/";
         try {
             const urlObj = new URL(targetUrl);
-            providerOrigin = urlObj.origin + "/";
-            console.log(`🔗 [DIAMOND_PROXY] Setting Dynamic Base: ${providerOrigin}`);
+            providerOrigin = urlObj.origin;
+            console.log(`🔗 [DIAMOND_PROXY] Setting Provider Origin: ${providerOrigin}`);
         } catch (err) {
             console.error("❌ [DIAMOND_PROXY_ERROR] Failed to parse provider origin:", err.message);
         }
 
-        // 🚀 HIGH-PRECISION INJECTION: Ensuring <base> is the absolute first tag in <head>
+        // 🚀 ASSET REWRITING ENGINE: Proxy all internal scripts/styles to bypass CORS
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const assetProxyBase = `${protocol}://${host}/streming/diomondtv/asset?origin=${encodeURIComponent(providerOrigin)}&url=`;
+
         let modifiedContent = content;
-        const headStart = content.indexOf('<head>');
+
+        // 1. Rewrite <script src="...">
+        modifiedContent = modifiedContent.replace(/(<script\b[^>]*?\bsrc\s*=\s*["'])([^"']+)(["'])/gi, (match, p1, p2, p3) => {
+            const absoluteUrl = p2.startsWith('http') ? p2 : new URL(p2, providerOrigin + '/').href;
+            return `${p1}${assetProxyBase}${encodeURIComponent(absoluteUrl)}${p3}`;
+        });
+
+        // 2. Rewrite <link href="...">
+        modifiedContent = modifiedContent.replace(/(<link\b[^>]*?\bhref\s*=\s*["'])([^"']+)(["'])/gi, (match, p1, p2, p3) => {
+            if (p2.includes('.css') || p2.includes('.ico') || p2.includes('.png')) {
+                const absoluteUrl = p2.startsWith('http') ? p2 : new URL(p2, providerOrigin + '/').href;
+                return `${p1}${assetProxyBase}${encodeURIComponent(absoluteUrl)}${p3}`;
+            }
+            return match;
+        });
+
+        // 3. Inject Base Tag as fallback
+        const headStart = modifiedContent.indexOf('<head>');
         if (headStart !== -1) {
             const headTag = '<head>';
-            const baseTag = `\n    <base href="${providerOrigin}">`;
-            modifiedContent = content.slice(0, headStart + headTag.length) + baseTag + content.slice(headStart + headTag.length);
-        } else {
-            modifiedContent = content.replace('<html>', `<html><head><base href="${providerOrigin}"></head>`);
+            const baseTag = `\n    <base href="${providerOrigin}/">`;
+            modifiedContent = modifiedContent.slice(0, headStart + headTag.length) + baseTag + modifiedContent.slice(headStart + headTag.length);
         }
 
         res.set('Content-Type', 'text/html');
-        // 🛡️ Permissive CSP for the proxied content itself to allow provider assets
         res.set('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob:; style-src * 'unsafe-inline';");
         res.set('X-Frame-Options', 'ALLOWALL');
         res.send(modifiedContent);
@@ -394,4 +340,32 @@ async function proxyDiamondHandler(req, res) {
     }
 }
 
-module.exports = { getDiamondUrl, renderDiamondEmbed, getMagicUrl, proxyDiamondHandler };
+async function proxyDiamondAsset(req, res) {
+    const { url, origin } = req.query;
+    try {
+        if (!url) return res.status(400).send("Missing URL");
+
+        console.log(`📦 [ASSET_PROXY] Fetching: ${url}`);
+
+        const response = await axios.get(url, {
+            headers: {
+                'Referer': origin || 'https://www.betswiz.in/',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0'
+            },
+            responseType: 'arraybuffer',
+            timeout: 10000
+        });
+
+        const contentType = response.headers['content-type'];
+        if (contentType) res.set('Content-Type', contentType);
+        
+        // Cache assets for 1 hour
+        res.set('Cache-Control', 'public, max-age=3600');
+        res.send(response.data);
+    } catch (e) {
+        console.error(`❌ [ASSET_PROXY_FAIL] ${url}:`, e.message);
+        res.status(404).send("Asset not found");
+    }
+}
+
+module.exports = { getDiamondUrl, renderDiamondEmbed, getMagicUrl, proxyDiamondHandler, proxyDiamondAsset };
