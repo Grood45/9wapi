@@ -32,11 +32,18 @@ async function _saveToken(srToken, source, attempt = 1) {
 }
 
 /**
- * Method 1: Fetch from Moneybuzz
+ * Method 1: Fetch from Moneybuzz (Smart Cache)
  */
-async function _fetchFromMoneybuzz() {
-    console.log("🔍 Attempting token refresh via MONEYBUZZ...");
+async function _fetchFromMoneybuzz(forceLogin = false) {
+    console.log(`🔍 Attempting token refresh via MONEYBUZZ (ForceLogin: ${forceLogin})...`);
     
+    let mbAuthDoc = await SystemConfig.findOne({ key: "MONEYBUZZ_ACCESS_TOKEN" });
+    let accessToken = mbAuthDoc?.value?.token;
+    let expiresAt = mbAuthDoc?.value?.expiresAt || 0;
+
+    // Logic: Login only if forced, no token, or token expiring in < 1 hour
+    const needsLogin = forceLogin || !accessToken || (Date.now() + 3600000 > expiresAt);
+
     const headers = {
         "Host": "api.d99hub.com",
         "Accept": "application/json, text/plain, */*",
@@ -56,30 +63,57 @@ async function _fetchFromMoneybuzz() {
     };
     if (agent) axiosConfig.httpsAgent = agent;
 
-    // Step 1: Login
-    const loginRes = await axios.post(MONEYBUZZ.AUTH_API, {
-        domain: MONEYBUZZ.domain,
-        username: MONEYBUZZ.username,
-        password: MONEYBUZZ.password
-    }, axiosConfig);
+    if (needsLogin) {
+        console.log("🔑 MONEYBUZZ: Performing fresh login...");
+        const loginRes = await axios.post(MONEYBUZZ.AUTH_API, {
+            domain: MONEYBUZZ.domain,
+            username: MONEYBUZZ.username,
+            password: MONEYBUZZ.password
+        }, axiosConfig);
 
-    const accessToken = loginRes.data?.access_token || loginRes.data?.data?.access_token;
-    if (!accessToken) throw new Error("MONEYBUZZ_LOGIN_FAILED");
+        accessToken = loginRes.data?.access_token || loginRes.data?.data?.access_token;
+        const expiresIn = loginRes.data?.expires_in || loginRes.data?.data?.expires_in || 86400;
 
-    // Step 2: Iframe
-    const iframeRes = await axios.get(MONEYBUZZ.SPORTSBOOK_API, {
-        ...axiosConfig,
-        headers: { ...headers, "Authorization": `bearer ${accessToken}` }
-    });
+        if (!accessToken) throw new Error("MONEYBUZZ_LOGIN_FAILED");
 
-    const iframeUrl = iframeRes.data?.iframe || iframeRes.data?.data?.iframe;
-    if (!iframeUrl) throw new Error("MONEYBUZZ_IFRAME_NOT_FOUND");
+        // Cache the access token
+        await SystemConfig.findOneAndUpdate(
+            { key: "MONEYBUZZ_ACCESS_TOKEN" },
+            { 
+                value: { 
+                    token: accessToken, 
+                    expiresAt: Date.now() + (expiresIn * 1000),
+                    updatedAt: Date.now()
+                } 
+            },
+            { upsert: true }
+        );
+    }
 
-    const urlObj = new URL(iframeUrl);
-    const srToken = urlObj.searchParams.get("token");
-    if (!srToken) throw new Error("MONEYBUZZ_TOKEN_EXTRACTION_FAILED");
+    try {
+        // Step 2: Iframe
+        const iframeRes = await axios.get(MONEYBUZZ.SPORTSBOOK_API, {
+            ...axiosConfig,
+            headers: { ...headers, "Authorization": `bearer ${accessToken}` }
+        });
 
-    return srToken;
+        const iframeUrl = iframeRes.data?.iframe || iframeRes.data?.data?.iframe;
+        if (!iframeUrl) throw new Error("MONEYBUZZ_IFRAME_NOT_FOUND");
+
+        const urlObj = new URL(iframeUrl);
+        const srToken = urlObj.searchParams.get("token");
+        if (!srToken) throw new Error("MONEYBUZZ_TOKEN_EXTRACTION_FAILED");
+
+        return srToken;
+
+    } catch (err) {
+        // If we tried with cached token and it failed, try one more time with fresh login
+        if (!needsLogin && (err.response?.status === 401 || err.message.includes("IFRAME"))) {
+            console.warn("⚠️ Cached Moneybuzz token failed, retrying with fresh login...");
+            return _fetchFromMoneybuzz(true);
+        }
+        throw err;
+    }
 }
 
 /**
