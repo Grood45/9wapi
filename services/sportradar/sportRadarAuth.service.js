@@ -33,14 +33,27 @@ async function _saveToken(srToken, source, attempt = 1) {
 async function _fetchFromMoneybuzz() {
     console.log("🔍 Attempting token refresh via MONEYBUZZ...");
     
+    const headers = {
+        "Host": "api.d99hub.com",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:149.0) Gecko/20100101 Firefox/149.0",
+        "Origin": "https://moneybuzz247.com",
+        "Referer": "https://moneybuzz247.com/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site"
+    };
+
     // Step 1: Login
     const loginRes = await axios.post(MONEYBUZZ.AUTH_API, {
         domain: MONEYBUZZ.domain,
         username: MONEYBUZZ.username,
         password: MONEYBUZZ.password
     }, {
-        headers: { "Accept": "application/json", "Content-Type": "application/json" },
-        timeout: 10000
+        headers: headers,
+        timeout: 15000
     });
 
     const accessToken = loginRes.data?.access_token || loginRes.data?.data?.access_token;
@@ -48,8 +61,8 @@ async function _fetchFromMoneybuzz() {
 
     // Step 2: Iframe
     const iframeRes = await axios.get(MONEYBUZZ.SPORTSBOOK_API, {
-        headers: { "Authorization": `bearer ${accessToken}` },
-        timeout: 10000
+        headers: { ...headers, "Authorization": `bearer ${accessToken}` },
+        timeout: 15000
     });
 
     const iframeUrl = iframeRes.data?.iframe || iframeRes.data?.data?.iframe;
@@ -75,6 +88,19 @@ async function _fetchFromLaser247(forceLogin = false) {
     // Logic: Login only if forced, no token, or token expiring in < 1 hour
     const needsLogin = forceLogin || !accessToken || (Date.now() + 3600000 > expiresAt);
 
+    const headers = {
+        "Host": "api.laser247.id",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:149.0) Gecko/20100101 Firefox/149.0",
+        "Origin": "https://laser247.online",
+        "Referer": "https://laser247.online/",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site"
+    };
+
     if (needsLogin) {
         console.log("🔑 LASER247: Performing fresh login...");
         const loginRes = await axios.post(LASER247.AUTH_API, {
@@ -82,8 +108,8 @@ async function _fetchFromLaser247(forceLogin = false) {
             username: LASER247.username,
             password: LASER247.password
         }, {
-            headers: { "Accept": "application/json", "Content-Type": "application/json" },
-            timeout: 10000
+            headers: headers,
+            timeout: 15000
         });
 
         accessToken = loginRes.data?.access_token || loginRes.data?.data?.access_token;
@@ -108,8 +134,8 @@ async function _fetchFromLaser247(forceLogin = false) {
     try {
         // Get Iframe
         const iframeRes = await axios.get(LASER247.SPORTSBOOK_API, {
-            headers: { "Authorization": `bearer ${accessToken}` },
-            timeout: 10000
+            headers: { ...headers, "Authorization": `bearer ${accessToken}` },
+            timeout: 15000
         });
 
         const iframeUrl = iframeRes.data?.iframe || iframeRes.data?.data?.iframe;
