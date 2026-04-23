@@ -97,4 +97,48 @@ async function proxyDiamondStream(eventId) {
     }
 }
 
-module.exports = { fetchDiamondStream, proxyDiamondStream };
+/**
+ * 🛰️ TRANSPARENT HLS MANIFEST REWRITER
+ * Fetches the remote .m3u8 and rewrites all segment/key links to point to our proxy.
+ */
+async function getProxiedM3U8(url, proxyBase) {
+    try {
+        const response = await axios.get(url, {
+            headers: {
+                'Referer': 'https://www.betswiz.in/',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:150.0) Gecko/20100101 Firefox/150.0'
+            },
+            timeout: 10000
+        });
+
+        const content = response.data;
+        const urlObj = new URL(url);
+        const origin = urlObj.origin;
+        const baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+
+        const lines = content.split('\n');
+        const rewritten = lines.map(line => {
+            const trimmed = line.trim();
+            if (!trimmed) return line;
+
+            // Handle Tags that might contain URLs (like URI="...")
+            if (trimmed.startsWith('#')) {
+                return line.replace(/URI=["']([^"']+)["']/g, (match, p1) => {
+                    const abs = p1.startsWith('http') ? p1 : (p1.startsWith('/') ? origin + p1 : baseUrl + p1);
+                    return `URI="${proxyBase}?url=${encodeURIComponent(abs)}"`;
+                });
+            }
+
+            // Handle direct links (Segments)
+            const absUrl = trimmed.startsWith('http') ? trimmed : (trimmed.startsWith('/') ? origin + trimmed : baseUrl + trimmed);
+            return `${proxyBase}?url=${encodeURIComponent(absUrl)}`;
+        });
+
+        return rewritten.join('\n');
+    } catch (e) {
+        console.error("❌ [M3U8_REWRITE_ERROR]", e.message);
+        throw e;
+    }
+}
+
+module.exports = { fetchDiamondStream, proxyDiamondStream, getProxiedM3U8 };

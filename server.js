@@ -20,7 +20,7 @@ require("./cron/streaming/streamingSync.cron"); // NEW Magic Mapping (Diamond to
 
 const { gliveHandler } = require("./controllers/skyexchange/glive.controller");
 const { getEventStream } = require("./controllers/skyexchange/event.controller");
-const { getDiamondUrl, renderDiamondEmbed, getMagicUrl, proxyDiamondHandler, proxyDiamondAsset } = require("./controllers/d247/diamondtv.controller");
+const { getDiamondUrl, renderDiamondEmbed, getMagicUrl, proxyDiamondHandler, proxyDiamondAsset, handleM3U8Proxy } = require("./controllers/d247/diamondtv.controller");
 const { getD267Url, renderD267Embed, proxyD267Handler } = require("./controllers/d247/d267tv.controller");
 const apiAccessGuard = require("./middlewares/apiAccessGuard");
 
@@ -155,6 +155,7 @@ app.get("/api/v1/events/gman/details/:matchId", apiAccessGuard('Gman', '/api/v1/
 app.get("/api/v1/stream/diamondtv/:eventId", apiAccessGuard('D247', '/api/v1/stream/diamondtv'), getDiamondUrl); // ⚡ DiamondTV JSON API (Return Clean URL)
 app.get("/api/v1/stream/magic/:eventId", apiAccessGuard('D247', '/api/v1/stream/magic'), getMagicUrl); // ⚡ MAGIC Unified JSON API (Supports Diamond/Betfair IDs)
 app.get("/streming/diomondtv/asset", proxyDiamondAsset); // ⚡ DiamondTV Asset Proxy (Bypass CORS)
+app.get("/streming/diomondtv/m3u8", handleM3U8Proxy); // ⚡ DiamondTV M3U8 Proxy (Rewrite Manifest)
 app.get("/streming/diomondtv/:eventId", apiAccessGuard('D247', '/streming/diomondtv'), renderDiamondEmbed); // ⚡ DiamondTV Proxy Iframe (Rendered HTML)
 app.get("/streming/diomondtv/proxy/:eventId", apiAccessGuard('D247', '/streming/diomondtv/proxy'), proxyDiamondHandler); // ⚡ DiamondTV Server-Side HTML Proxy
 
