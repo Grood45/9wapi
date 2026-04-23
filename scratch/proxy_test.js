@@ -50,9 +50,12 @@ async function runTest() {
         
         console.log("✅ SUCCESS!");
         console.log("Status Code:", res.status);
-        console.log("Access Token Received:", res.data?.access_token ? "YES" : "NO");
-        if (res.data?.access_token) {
-            console.log("Token Preview:", res.data.access_token.substring(0, 30) + "...");
+        console.log("Response Data:", JSON.stringify(res.data, null, 2));
+        
+        const token = res.data?.access_token || res.data?.data?.access_token;
+        console.log("Access Token Received:", token ? "YES" : "NO");
+        if (token) {
+            console.log("Token Preview:", token.substring(0, 30) + "...");
         }
 
     } catch (err) {
