@@ -314,10 +314,27 @@ async function proxyDiamondHandler(req, res) {
         // 🚀 ADVANCED HTML REWRITER
         let modifiedContent = content;
 
-        // 1. Inject <base> tag to fix relative links automatically
-        modifiedContent = modifiedContent.replace('<head>', `<head>\n    <base href="${providerOrigin}/">`);
+        // 1. Remove Provider's CSP (To allow our injected scripts to run)
+        modifiedContent = modifiedContent.replace(/<meta[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi, '');
 
-        // 2. Rewrite all src/href to go through our asset proxy (Optional but safer)
+        // 2. Inject <base> tag and URL Masking Script
+        const headInjection = `
+            <base href="${providerOrigin}/">
+            <script>
+                // 🛡️ SECURITY SPOOFING: Prevent Angular/Provider from detecting the proxy path
+                try {
+                    // Trick Angular Router to think it is on the root path
+                    window.history.replaceState({}, '', '/');
+                    
+                    // Prevent frame detection
+                    window.top = window.self;
+                    window.parent = window.self;
+                } catch (e) { console.error("Spoofing failed", e); }
+            </script>
+        `;
+        modifiedContent = modifiedContent.replace('<head>', `<head>${headInjection}`);
+
+        // 3. Rewrite all src/href to go through our asset proxy
         const assetProxyBase = `${protocol}://${host}/streming/diomondtv/asset?origin=${encodeURIComponent(providerOrigin)}&url=`;
         
         modifiedContent = modifiedContent.replace(/(src|href)=["'](?!http|data:)([^"']+)["']/g, (match, attr, path) => {
@@ -325,17 +342,9 @@ async function proxyDiamondHandler(req, res) {
             return `${attr}="${assetProxyBase}${encodeURIComponent(abs)}"`;
         });
 
-        // 3. Spoof 'top' and 'parent' to prevent frame-breaking scripts
-        modifiedContent = modifiedContent.replace('</head>', `
-            <script>
-                try {
-                    window.top = window.self;
-                    window.parent = window.self;
-                } catch (e) {}
-            </script>
-        </head>`);
-
         res.set('Content-Type', 'text/html');
+        // ⚡ Ensure we allow the browser to run our scripts
+        res.set('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;");
         res.send(modifiedContent);
     } catch (e) {
         res.status(500).send(`Proxy Error: ${e.message}`);
