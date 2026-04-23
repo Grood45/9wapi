@@ -1,4 +1,4 @@
-const { refreshSportRadarToken, getSportRadarToken } = require("../../services/sportradar/sportRadarAuth.service");
+const { refreshSportRadarToken, getSportRadarTokenData } = require("../../services/sportradar/sportRadarAuth.service");
 
 /**
  * Force refresh the SportRadar token via API.
@@ -21,14 +21,20 @@ async function handleSportRadarRefresh(req, res) {
 }
 
 /**
- * Get the current token from DB.
+ * Get the current token from DB with metadata.
  */
 async function handleGetSportRadarToken(req, res) {
-    const token = await getSportRadarToken();
-    if (!token) {
+    const data = await getSportRadarTokenData();
+    if (!data || !data.token) {
         return res.status(404).json({ success: false, message: "Token not found in DB. Run refresh first." });
     }
-    return res.status(200).json({ success: true, token });
+    return res.status(200).json({ 
+        success: true, 
+        token: data.token,
+        source: data.source || "Unknown",
+        updatedAt: data.updatedAt,
+        lastAttemptStatus: data.lastAttemptStatus
+    });
 }
 
 module.exports = {

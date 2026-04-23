@@ -1,122 +1,194 @@
 const axios = require("axios");
 const SystemConfig = require("../../models/SystemConfig");
-const { MONEYBUZZ } = require("../../config/config");
+const { MONEYBUZZ, LASER247 } = require("../../config/config");
 
 /**
- * ⚡ PRO-LEVEL STRATEGY: Robust Token Management
- * - Retries on failure (3 attempts)
- * - Atomic DB Update (Old token preserved until new one is verified)
- * - Metadata tracking (Last success/error logs)
+ * ⚡ PRO-LEVEL STRATEGY: Robust Token Management with Smart Fallback
  */
-async function refreshSportRadarToken(retryCount = 3) {
+
+/**
+ * Internal helper to save token and metadata to DB
+ */
+async function _saveToken(srToken, source, attempt = 1) {
+    const updateData = {
+        token: srToken,
+        source: source,
+        updatedAt: Date.now(),
+        lastAttemptStatus: "Success",
+        lastError: null,
+        attemptCount: attempt
+    };
+
+    await SystemConfig.findOneAndUpdate(
+        { key: "SPORTRADAR_TOKEN" },
+        { value: updateData },
+        { upsert: true }
+    );
+    return srToken;
+}
+
+/**
+ * Method 1: Fetch from Moneybuzz
+ */
+async function _fetchFromMoneybuzz() {
+    console.log("🔍 Attempting token refresh via MONEYBUZZ...");
+    
+    // Step 1: Login
+    const loginRes = await axios.post(MONEYBUZZ.AUTH_API, {
+        domain: MONEYBUZZ.domain,
+        username: MONEYBUZZ.username,
+        password: MONEYBUZZ.password
+    }, {
+        headers: { "Accept": "application/json", "Content-Type": "application/json" },
+        timeout: 10000
+    });
+
+    const accessToken = loginRes.data?.access_token || loginRes.data?.data?.access_token;
+    if (!accessToken) throw new Error("MONEYBUZZ_LOGIN_FAILED");
+
+    // Step 2: Iframe
+    const iframeRes = await axios.get(MONEYBUZZ.SPORTSBOOK_API, {
+        headers: { "Authorization": `bearer ${accessToken}` },
+        timeout: 10000
+    });
+
+    const iframeUrl = iframeRes.data?.iframe || iframeRes.data?.data?.iframe;
+    if (!iframeUrl) throw new Error("MONEYBUZZ_IFRAME_NOT_FOUND");
+
+    const urlObj = new URL(iframeUrl);
+    const srToken = urlObj.searchParams.get("token");
+    if (!srToken) throw new Error("MONEYBUZZ_TOKEN_EXTRACTION_FAILED");
+
+    return srToken;
+}
+
+/**
+ * Method 2: Fetch from Laser247 (Smart Cache)
+ */
+async function _fetchFromLaser247(forceLogin = false) {
+    console.log(`🔍 Attempting token refresh via LASER247 (ForceLogin: ${forceLogin})...`);
+    
+    let laserAuthDoc = await SystemConfig.findOne({ key: "LASER247_ACCESS_TOKEN" });
+    let accessToken = laserAuthDoc?.value?.token;
+    let expiresAt = laserAuthDoc?.value?.expiresAt || 0;
+
+    // Logic: Login only if forced, no token, or token expiring in < 1 hour
+    const needsLogin = forceLogin || !accessToken || (Date.now() + 3600000 > expiresAt);
+
+    if (needsLogin) {
+        console.log("🔑 LASER247: Performing fresh login...");
+        const loginRes = await axios.post(LASER247.AUTH_API, {
+            domain: LASER247.domain,
+            username: LASER247.username,
+            password: LASER247.password
+        }, {
+            headers: { "Accept": "application/json", "Content-Type": "application/json" },
+            timeout: 10000
+        });
+
+        accessToken = loginRes.data?.access_token || loginRes.data?.data?.access_token;
+        const expiresIn = loginRes.data?.expires_in || loginRes.data?.data?.expires_in || 86400;
+
+        if (!accessToken) throw new Error("LASER247_LOGIN_FAILED");
+
+        // Cache the access token
+        await SystemConfig.findOneAndUpdate(
+            { key: "LASER247_ACCESS_TOKEN" },
+            { 
+                value: { 
+                    token: accessToken, 
+                    expiresAt: Date.now() + (expiresIn * 1000),
+                    updatedAt: Date.now()
+                } 
+            },
+            { upsert: true }
+        );
+    }
+
+    try {
+        // Get Iframe
+        const iframeRes = await axios.get(LASER247.SPORTSBOOK_API, {
+            headers: { "Authorization": `bearer ${accessToken}` },
+            timeout: 10000
+        });
+
+        const iframeUrl = iframeRes.data?.iframe || iframeRes.data?.data?.iframe;
+        if (!iframeUrl) throw new Error("LASER247_IFRAME_NOT_FOUND");
+
+        const urlObj = new URL(iframeUrl);
+        const srToken = urlObj.searchParams.get("token");
+        if (!srToken) throw new Error("LASER247_TOKEN_EXTRACTION_FAILED");
+
+        return srToken;
+
+    } catch (err) {
+        // If we tried with cached token and it failed, try one more time with fresh login
+        if (!needsLogin && (err.response?.status === 401 || err.message.includes("IFRAME"))) {
+            console.warn("⚠️ Cached Laser247 token failed, retrying with fresh login...");
+            return _fetchFromLaser247(true);
+        }
+        throw err;
+    }
+}
+
+async function refreshSportRadarToken(retryCount = 2) {
     let lastError = null;
 
     for (let attempt = 1; attempt <= retryCount; attempt++) {
         try {
-            console.log(`🚀 [Attempt ${attempt}/${retryCount}] STARTING SPORTRADAR TOKEN REFRESH...`);
+            console.log(`🚀 [Attempt ${attempt}/${retryCount}] REFRESHING SPORTRADAR TOKEN...`);
 
-            // 🔹 STEP 1: Login to D99Hub
-            const loginRes = await axios.post(MONEYBUZZ.AUTH_API, {
-                domain: MONEYBUZZ.domain,
-                username: MONEYBUZZ.username,
-                password: MONEYBUZZ.password
-            }, {
-                headers: {
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                },
-                timeout: 15000
-            });
-
-            const accessToken = loginRes.data?.access_token || loginRes.data?.data?.access_token;
-            if (!accessToken) {
-                throw new Error("D99HUB_LOGIN_FAILED_NO_TOKEN");
+            // 🔹 TRY MONEYBUZZ FIRST
+            try {
+                const token = await _fetchFromMoneybuzz();
+                await _saveToken(token, "Moneybuzz", attempt);
+                console.log("✅ SPORTRADAR TOKEN UPDATED (Source: Moneybuzz)");
+                return token;
+            } catch (mbErr) {
+                console.warn("⚠️ Moneybuzz method failed, trying Laser247 fallback...");
+                lastError = mbErr.message;
             }
 
-            // 🔹 STEP 2: Get Sportsbook Iframe URL
-            const iframeRes = await axios.get(MONEYBUZZ.SPORTSBOOK_API, {
-                headers: {
-                    "Accept": "application/json",
-                    "Authorization": `bearer ${accessToken}`,
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                },
-                timeout: 15000
-            });
-
-            const iframeUrl = iframeRes.data?.iframe || iframeRes.data?.data?.iframe;
-            if (!iframeUrl) {
-                throw new Error("IFRAME_URL_NOT_FOUND");
+            // 🔹 FALLBACK TO LASER247
+            try {
+                const token = await _fetchFromLaser247();
+                await _saveToken(token, "Laser247", attempt);
+                console.log("✅ SPORTRADAR TOKEN UPDATED (Source: Laser247)");
+                return token;
+            } catch (lErr) {
+                lastError = lErr.message;
+                throw new Error(lastError); // Trigger retry loop
             }
-
-            // 🔹 STEP 3: Extract Token from URL
-            const urlObj = new URL(iframeUrl);
-            const srToken = urlObj.searchParams.get("token");
-
-            // 🛡️ VALIDATION: Ensure token is not empty and has a minimum length
-            if (!srToken || srToken.length < 10) {
-                throw new Error("INVALID_TOKEN_EXTRACTED");
-            }
-
-            // 🔹 STEP 4: Atomic Save to Database
-            // We ONLY reach here if everything above succeeded.
-            // Old token is automatically preserved because we haven't touched the DB yet.
-            const updateData = {
-                token: srToken,
-                updatedAt: Date.now(),
-                lastAttemptStatus: "Success",
-                lastError: null,
-                attemptCount: attempt
-            };
-
-            await SystemConfig.findOneAndUpdate(
-                { key: "SPORTRADAR_TOKEN" },
-                { value: updateData },
-                { upsert: true }
-            );
-
-            console.log(`✅ SPORTRADAR TOKEN UPDATED SUCCESSFULLY (Attempt ${attempt})`);
-            return srToken;
 
         } catch (e) {
-            lastError = e.message;
-            console.warn(`⚠️ [Attempt ${attempt}] SPORTRADAR AUTH ERROR:`, lastError);
-            
-            // Log the error to DB so we can track it, but PRESERVE the existing token
-            await SystemConfig.updateOne(
-                { key: "SPORTRADAR_TOKEN" },
-                { 
-                    $set: { 
-                        "value.lastAttemptStatus": "Failed",
-                        "value.lastError": lastError,
-                        "value.lastErrorAt": Date.now()
-                    } 
-                }
-            ).catch(() => {}); // Silent catch for DB logging failure
-
-            // Wait before next retry (Exponential Backoff or simple delay)
+            console.warn(`❌ Attempt ${attempt} failed: ${e.message}`);
             if (attempt < retryCount) {
-                const delay = 5000 * attempt; 
-                console.log(`⏳ Waiting ${delay/1000}s before next attempt...`);
-                await new Promise(resolve => setTimeout(resolve, delay));
+                await new Promise(r => setTimeout(r, 3000));
             }
         }
     }
 
-    // If we reach here, all retries failed.
-    console.error("❌ ALL ATTEMPTS FAILED. Old token is still in DB.");
-    throw new Error(`SPORTRADAR_REFRESH_FAILED: ${lastError}`);
+    throw new Error(`ALL_ATEMPTS_FAILED: ${lastError}`);
 }
 
 /**
- * Helper to get the token from DB
+ * Helper to get the full token metadata from DB
+ */
+async function getSportRadarTokenData() {
+    const doc = await SystemConfig.findOne({ key: "SPORTRADAR_TOKEN" });
+    return doc?.value || null;
+}
+
+/**
+ * Backward compatibility: get only the token string
  */
 async function getSportRadarToken() {
-    const doc = await SystemConfig.findOne({ key: "SPORTRADAR_TOKEN" });
-    return doc?.value?.token || null;
+    const data = await getSportRadarTokenData();
+    return data?.token || null;
 }
 
 module.exports = {
     refreshSportRadarToken,
-    getSportRadarToken
+    getSportRadarToken,
+    getSportRadarTokenData
 };

@@ -21,5 +21,13 @@ module.exports = {
     password: "Sher@123",
     AUTH_API: "https://api.d99hub.com/api/auth",
     SPORTSBOOK_API: "https://api.d99hub.com/api/client/sports-book-new/1"
+  },
+  
+  LASER247: {
+    domain: "laser247.online",
+    username: "ZLS6971",
+    password: "968010Ss@",
+    AUTH_API: "https://api.laser247.id/api/auth",
+    SPORTSBOOK_API: "https://api.laser247.id/api/client/sports-book-new/1"
   }
 };
