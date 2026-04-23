@@ -20,7 +20,7 @@ require("./cron/streaming/streamingSync.cron"); // NEW Magic Mapping (Diamond to
 
 const { gliveHandler } = require("./controllers/skyexchange/glive.controller");
 const { getEventStream } = require("./controllers/skyexchange/event.controller");
-const { getDiamondUrl, renderDiamondEmbed, getMagicUrl } = require("./controllers/d247/diamondtv.controller");
+const { getDiamondUrl, renderDiamondEmbed, getMagicUrl, proxyDiamondHandler } = require("./controllers/d247/diamondtv.controller");
 const { getD267Url, renderD267Embed, proxyD267Handler } = require("./controllers/d247/d267tv.controller");
 const apiAccessGuard = require("./middlewares/apiAccessGuard");
 
@@ -49,18 +49,21 @@ const rateLimit = require("express-rate-limit");
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdn.socket.io"],
-      connectSrc: ["'self'", "ws:", "wss:", "https://cdn.jsdelivr.net", "https://*.skyinplay.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      mediaSrc: ["'self'", "blob:", "https:"],
-      frameSrc: ["'self'", "https:"],
-      frameAncestors: ["'self'", "*"] // 🛡️ ALLOWED ANCESTORS: Allows framing from other domains (for streaming)
+      defaultSrc: ["'self'", "https:", "http:"],
+      baseUri: ["'self'", "https://www.betswiz.in/", "https://play.livestream11.com/", "https://getscoredata.com/"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://cdn.socket.io", "https://www.betswiz.in/", "https://static.cloudflareinsights.com/", "https://getscoredata.com/"],
+      connectSrc: ["'self'", "ws:", "wss:", "https:", "http:", "https://cdn.jsdelivr.net", "https://*.skyinplay.com", "https://www.betswiz.in/", "https://getscoredata.com/"],
+      imgSrc: ["'self'", "data:", "https:", "http:", "https://www.betswiz.in/", "https://getscoredata.com/"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https:", "http:", "https://fonts.googleapis.com/", "https://www.betswiz.in/", "https://getscoredata.com/"],
+      fontSrc: ["'self'", "data:", "https:", "http:", "https://fonts.gstatic.com/"],
+      mediaSrc: ["'self'", "blob:", "https:", "http:", "https://www.betswiz.in/", "https://getscoredata.com/"],
+      frameSrc: ["'self'", "https:", "http:"],
+      frameAncestors: ["'self'", "*"]
     }
   },
-  crossOriginEmbedderPolicy: false, // Required for some streaming sources
-  xFrameOptions: false // Disable legacy header to let CSP frame-ancestors take control
-})); // Security Headers
+  crossOriginEmbedderPolicy: false,
+  xFrameOptions: false
+}));
 app.use(compression()); // Gzip Compression
 app.use(cors()); // Allow Cross-Origin Requests
 
@@ -152,6 +155,7 @@ app.get("/api/v1/events/gman/details/:matchId", apiAccessGuard('Gman', '/api/v1/
 app.get("/api/v1/stream/diamondtv/:eventId", apiAccessGuard('D247', '/api/v1/stream/diamondtv'), getDiamondUrl); // ⚡ DiamondTV JSON API (Return Clean URL)
 app.get("/api/v1/stream/magic/:eventId", apiAccessGuard('D247', '/api/v1/stream/magic'), getMagicUrl); // ⚡ MAGIC Unified JSON API (Supports Diamond/Betfair IDs)
 app.get("/streming/diomondtv/:eventId", apiAccessGuard('D247', '/streming/diomondtv'), renderDiamondEmbed); // ⚡ DiamondTV Proxy Iframe (Rendered HTML)
+app.get("/streming/diomondtv/proxy/:eventId", apiAccessGuard('D247', '/streming/diomondtv/proxy'), proxyDiamondHandler); // ⚡ DiamondTV Server-Side HTML Proxy
 
 app.get("/api/v1/stream/d267tv/:eventId", apiAccessGuard('D247', '/api/v1/stream/d267tv'), getD267Url); // ⚡ D267TV JSON API (Return Clean URL)
 app.get("/streming/d267tv/:eventId", apiAccessGuard('D247', '/streming/d267tv'), renderD267Embed); // ⚡ D267TV Proxy Iframe (Rendered HTML)

@@ -1,4 +1,4 @@
-const { fetchDiamondStream } = require("../../services/d247/diamondtv.service");
+const { fetchDiamondStream, proxyDiamondStream } = require("../../services/d247/diamondtv.service");
 const ClientAccess = require("../../models/ClientAccess");
 const StreamingMap = require("../../models/StreamingMap");
 const axios = require("axios");
@@ -293,6 +293,11 @@ async function renderDiamondEmbed(req, res) {
 260:         }
 261:         */
 
+        // 🛡️ Use a internal proxy URL to mask IP from Betswiz
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const proxyUrl = `${protocol}://${host}/streming/diomondtv/proxy/${eventId}`;
+
         // 🚀 Premium Iframe Wrapper with Smart Masking (To hide provider-side 'Loading' text)
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         res.set('Pragma', 'no-cache');
@@ -328,11 +333,12 @@ async function renderDiamondEmbed(req, res) {
                     <div class="spinner"></div>
                 </div>
                 <iframe 
-                    src="${streamingUrl}" 
+                    src="${proxyUrl}" 
                     allowfullscreen="true" 
                     webkitallowfullscreen="true" 
                     mozallowfullscreen="true" 
                     scrolling="no"
+                    allow="autoplay"
                 ></iframe>
                 <script>
                     // ⚡ High-Performance Masking Logic (Hide provider text for 2.5s)
@@ -352,4 +358,40 @@ async function renderDiamondEmbed(req, res) {
     }
 }
 
-module.exports = { getDiamondUrl, renderDiamondEmbed, getMagicUrl };
+async function proxyDiamondHandler(req, res) {
+    const { eventId } = req.params;
+    try {
+        const { content, targetUrl } = await proxyDiamondStream(eventId);
+
+        // 🚀 DYNAMIC BASE: Extract origin from the provider's URL
+        let providerOrigin = "https://www.betswiz.in/";
+        try {
+            const urlObj = new URL(targetUrl);
+            providerOrigin = urlObj.origin + "/";
+            console.log(`🔗 [DIAMOND_PROXY] Setting Dynamic Base: ${providerOrigin}`);
+        } catch (err) {
+            console.error("❌ [DIAMOND_PROXY_ERROR] Failed to parse provider origin:", err.message);
+        }
+
+        // 🚀 HIGH-PRECISION INJECTION: Ensuring <base> is the absolute first tag in <head>
+        let modifiedContent = content;
+        const headStart = content.indexOf('<head>');
+        if (headStart !== -1) {
+            const headTag = '<head>';
+            const baseTag = `\n    <base href="${providerOrigin}">`;
+            modifiedContent = content.slice(0, headStart + headTag.length) + baseTag + content.slice(headStart + headTag.length);
+        } else {
+            modifiedContent = content.replace('<html>', `<html><head><base href="${providerOrigin}"></head>`);
+        }
+
+        res.set('Content-Type', 'text/html');
+        // 🛡️ Permissive CSP for the proxied content itself to allow provider assets
+        res.set('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob:; style-src * 'unsafe-inline';");
+        res.set('X-Frame-Options', 'ALLOWALL');
+        res.send(modifiedContent);
+    } catch (e) {
+        res.status(500).send(`Proxy Error: ${e.message}`);
+    }
+}
+
+module.exports = { getDiamondUrl, renderDiamondEmbed, getMagicUrl, proxyDiamondHandler };

@@ -28,3 +28,4 @@ Thumbs.db
 # Temporary / Generated files
 storage/*.json
 !storage/.gitkeep
+scratch/

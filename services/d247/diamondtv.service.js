@@ -69,4 +69,32 @@ async function fetchDiamondStream(eventId) {
     }
 }
 
-module.exports = { fetchDiamondStream };
+async function proxyDiamondStream(eventId) {
+    try {
+        const streamData = await fetchDiamondStream(eventId);
+        if (!streamData || !streamData.streamingUrl) {
+            throw new Error("STREAM_NOT_FOUND");
+        }
+
+        const targetUrl = streamData.streamingUrl;
+        console.log(`📡 [DIAMOND_PROXY] Fetching from Provider: ${targetUrl}`);
+
+        const response = await axios.get(targetUrl, {
+            headers: {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Connection': 'keep-alive',
+                'Referer': 'https://www.betswiz.in/',
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0'
+            },
+            timeout: 10000
+        });
+
+        return { content: response.data, targetUrl };
+    } catch (error) {
+        console.error(`❌ [DIAMOND_PROXY_ERROR] Error fetching proxy stream:`, error.message);
+        throw error;
+    }
+}
+
+module.exports = { fetchDiamondStream, proxyDiamondStream };
