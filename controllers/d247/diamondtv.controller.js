@@ -314,36 +314,35 @@ async function proxyDiamondHandler(req, res) {
         // 🚀 ADVANCED HTML REWRITER
         let modifiedContent = content;
 
-        // 1. Remove Provider's CSP (To allow our injected scripts to run)
+        // 1. Remove Provider's CSP & Base Tags
         modifiedContent = modifiedContent.replace(/<meta[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>/gi, '');
+        modifiedContent = modifiedContent.replace(/<base[^>]*>/gi, '');
 
-        // 2. Inject <base> tag and URL Masking Script
-        const headInjection = `
-            <base href="${providerOrigin}/">
-            <script>
-                // 🛡️ SECURITY SPOOFING: Prevent Angular/Provider from detecting the proxy path
-                try {
-                    // Trick Angular Router to think it is on the root path
-                    window.history.replaceState({}, '', '/');
-                    
-                    // Prevent frame detection
-                    window.top = window.self;
-                    window.parent = window.self;
-                } catch (e) { console.error("Spoofing failed", e); }
-            </script>
-        `;
-        modifiedContent = modifiedContent.replace('<head>', `<head>${headInjection}`);
-
-        // 3. Rewrite all src/href to go through our asset proxy
+        // 2. Rewrite all src/href to Absolute URLs via our asset proxy
         const assetProxyBase = `${protocol}://${host}/streming/diomondtv/asset?origin=${encodeURIComponent(providerOrigin)}&url=`;
         
+        // This regex covers scripts, links, and images, converting relative paths to proxied absolute ones
         modifiedContent = modifiedContent.replace(/(src|href)=["'](?!http|data:)([^"']+)["']/g, (match, attr, path) => {
             const abs = path.startsWith('/') ? `${providerOrigin}${path}` : `${providerOrigin}/${path}`;
             return `${attr}="${assetProxyBase}${encodeURIComponent(abs)}"`;
         });
 
+        // 3. Inject Fixed Spoofing Script (Uses relative path to avoid SecurityError)
+        const spoofingScript = `
+            <script>
+                try {
+                    // Fix Angular Router: Use relative path to avoid Origin SecurityError
+                    window.history.replaceState({}, '', '/');
+                    
+                    // Spoof top/parent for frame-breaking bypass
+                    window.top = window.self;
+                    window.parent = window.self;
+                } catch (e) { console.error("Spoofing failed:", e.message); }
+            </script>
+        `;
+        modifiedContent = modifiedContent.replace('<head>', `<head>${spoofingScript}`);
+
         res.set('Content-Type', 'text/html');
-        // ⚡ Ensure we allow the browser to run our scripts
         res.set('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;");
         res.send(modifiedContent);
     } catch (e) {
