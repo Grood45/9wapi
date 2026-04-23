@@ -308,6 +308,7 @@ async function proxyDiamondHandler(req, res) {
 
         const urlObj = new URL(targetUrl);
         const providerOrigin = urlObj.origin;
+        const providerPath = urlObj.pathname; // Extract something like /score/token/channel
         const protocol = req.protocol;
         const host = req.get('host');
 
@@ -321,18 +322,18 @@ async function proxyDiamondHandler(req, res) {
         // 2. Rewrite all src/href to Absolute URLs via our asset proxy
         const assetProxyBase = `${protocol}://${host}/streming/diomondtv/asset?origin=${encodeURIComponent(providerOrigin)}&url=`;
         
-        // This regex covers scripts, links, and images, converting relative paths to proxied absolute ones
         modifiedContent = modifiedContent.replace(/(src|href)=["'](?!http|data:)([^"']+)["']/g, (match, attr, path) => {
             const abs = path.startsWith('/') ? `${providerOrigin}${path}` : `${providerOrigin}/${path}`;
             return `${attr}="${assetProxyBase}${encodeURIComponent(abs)}"`;
         });
 
-        // 3. Inject Fixed Spoofing Script (Uses relative path to avoid SecurityError)
+        // 3. Inject Smart Spoofing Script (Uses the exact path from provider)
         const spoofingScript = `
             <script>
                 try {
-                    // Fix Angular Router: Use relative path to avoid Origin SecurityError
-                    window.history.replaceState({}, '', '/');
+                    // 🎯 Match Internal Path: Tricking Angular to see the tokens it needs
+                    const targetPath = '${providerPath}';
+                    window.history.replaceState({}, '', targetPath);
                     
                     // Spoof top/parent for frame-breaking bypass
                     window.top = window.self;
