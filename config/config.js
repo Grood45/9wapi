@@ -29,5 +29,10 @@ module.exports = {
     password: "968010Ss@",
     AUTH_API: "https://api.laser247.id/api/auth",
     SPORTSBOOK_API: "https://api.laser247.id/api/client/sports-book-new/1"
+  },
+
+  PROXY: {
+    useProxy: true,
+    url: "http://fqUe0xezvfZ2m7eD:Sher123123_country-in@geo.iproyal.com:12321"
   }
 };
