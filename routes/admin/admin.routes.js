@@ -7,6 +7,8 @@ const ledgerController = require('../../controllers/admin/ledger.controller');
 const adminAuthController = require('../../controllers/admin/adminAuth.controller');
 const streamingMapController = require('../../controllers/admin/streamingMap.controller');
 const adminAuth = require('../../middlewares/adminAuth.middleware');
+const { handleGetSportRadarToken, handleManualTokenUpdate, handleSportRadarRefresh } = require('../../controllers/sportradar/sportRadarAuth.controller');
+
 
 // =======================
 // AUTH ROUTES (PUBLIC)
@@ -80,5 +82,12 @@ router.delete("/streaming/unlink/:id", unlinkMapping);
 router.get("/streaming/stats", getStreamingStats);
 router.post("/streaming/sync", forceSync);
 router.get('/streaming/details/:bfId/:dId', getMappingDetails);
+
+// =======================
+// SPORTRADAR CONFIG ROUTES
+// =======================
+router.get('/sportradar/token', handleGetSportRadarToken);
+router.post('/sportradar/update', handleManualTokenUpdate);
+router.post('/sportradar/refresh', handleSportRadarRefresh);
 
 module.exports = router;

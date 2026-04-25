@@ -32,7 +32,7 @@ module.exports = {
   },
 
   PROXY: {
-    useProxy: true,
+    useProxy: false,
     url: "http://fqUe0xezvfZ2m7eD:Sher123123_country-in@geo.iproyal.com:12321"
   }
 };

@@ -257,8 +257,18 @@ async function getSportRadarToken() {
     return data?.token || null;
 }
 
+/**
+ * Manually update token from Admin Panel
+ */
+async function saveManualToken(token) {
+    if (!token) throw new Error("Token is required");
+    return await _saveToken(token, "Manual (Admin Panel)");
+}
+
+
 module.exports = {
     refreshSportRadarToken,
     getSportRadarToken,
-    getSportRadarTokenData
+    getSportRadarTokenData,
+    saveManualToken
 };

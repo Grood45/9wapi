@@ -1,4 +1,4 @@
-const { refreshSportRadarToken, getSportRadarTokenData } = require("../../services/sportradar/sportRadarAuth.service");
+const { refreshSportRadarToken, getSportRadarTokenData, saveManualToken } = require("../../services/sportradar/sportRadarAuth.service");
 
 /**
  * Force refresh the SportRadar token via API.
@@ -37,7 +37,34 @@ async function handleGetSportRadarToken(req, res) {
     });
 }
 
+/**
+ * Handle manual token update from Admin Panel.
+ */
+async function handleManualTokenUpdate(req, res) {
+    try {
+        const { token } = req.body;
+        if (!token) {
+            return res.status(400).json({ success: false, message: "Token is required." });
+        }
+        
+        await saveManualToken(token);
+        return res.status(200).json({
+            success: true,
+            message: "SportRadar token updated manually.",
+            token: token
+        });
+    } catch (e) {
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update SportRadar token.",
+            error: e.message
+        });
+    }
+}
+
 module.exports = {
     handleSportRadarRefresh,
-    handleGetSportRadarToken
+    handleGetSportRadarToken,
+    handleManualTokenUpdate
 };
+
